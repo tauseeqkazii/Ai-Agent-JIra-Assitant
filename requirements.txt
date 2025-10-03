@@ -1,0 +1,14 @@
+﻿openai
+transformers
+torch
+scikit-learn
+numpy
+pandas
+sentence-transformers
+redis
+python-dotenv
+pydantic
+pytest
+black
+flake8
+jupyter
