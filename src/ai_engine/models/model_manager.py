@@ -1,72 +1,81 @@
+"""
+Model Manager Module
+Manages OpenAI API calls and model interactions
+"""
+
 import logging
-import os
-from typing import Dict, Optional, Any
+from typing import Dict, Any, Optional
+from datetime import datetime
 
-import openai
 from openai import OpenAI
+import openai
 
-from ai_engine.core.config import config
-from ai_engine.utils.metrics import MetricsCollector
-
+from ..core.config import config
+from ..utils.metrics import MetricsCollector
 
 logger = logging.getLogger(__name__)
 
 
 class ModelManager:
-    """Manages OpenAI API calls and model interactions"""
-
-    def __init__(self):
-        self.metrics = MetricsCollector()
-        self.models: Dict[str, str] = {
-            "primary": config.openai_primary_model,
-            "fast": config.openai_fast_model,
-            "classification": config.openai_classification_model
-        }
-        self.token_limits: Dict[str, int] = config.token_limits
-
-        self._use_stub = self._determine_stub_mode()
-        self.client: Optional[OpenAI] = None
-
-        if not self._use_stub:
-            try:
-                self.client = OpenAI(api_key=config.openai_api_key)
-            except Exception as exc:
-                logger.warning(
-                    "Failed to initialize OpenAI client (%s). Falling back to stub mode.",
-                    exc
-                )
-                self._use_stub = True
-
-        if self._use_stub:
-            logger.info("ModelManager initialized in stub mode; OpenAI calls will be simulated.")
-
-    def _determine_stub_mode(self) -> bool:
-        """Check configuration and environment flags for stub mode"""
-        env_flag = os.getenv("AI_ENGINE_TEST_MODE") or os.getenv("TEST_MODE")
-        if env_flag and env_flag.strip().lower() in {"1", "true", "yes", "on"}:
-            return True
-        return config.test_mode
-
+    """
+    Manages OpenAI API calls with error handling and fallbacks
+    """
+    
+    def __init__(self, metrics: Optional[MetricsCollector] = None):
+        """
+        Initialize model manager
+        
+        Args:
+            metrics: Optional metrics collector instance (for shared metrics)
+        """
+        self.client = OpenAI(api_key=config.openai_api_key)
+        self.metrics = metrics or MetricsCollector()
+        
+        # Model configurations from config
+        self.models = config.model_config_map
+        self.token_limits = config.token_limits
+        
+        logger.info(f"ModelManager initialized with primary model: {self.models['primary']}")
+    
     def generate_completion(
-        self,
-        system_prompt: str,
+        self, 
+        system_prompt: str, 
         user_message: str,
         model_type: str = "primary",
         temperature: float = 0.3,
         max_tokens: Optional[int] = None
     ) -> Dict[str, Any]:
-        """Generate completion using OpenAI API or stubbed responses"""
-        model_name = self.models.get(model_type, self.models["primary"])
-
-        if self._use_stub or self.client is None:
-            return self._generate_stub_completion(system_prompt, user_message, model_name)
-
-        if max_tokens is None:
-            max_tokens = self.token_limits.get(model_name, 1000)
-
-        start_time = self._get_timestamp()
-
+        """
+        Generate completion using OpenAI API
+        
+        Args:
+            system_prompt: System instructions
+            user_message: User input to process
+            model_type: Which model to use (primary/fast/classification)
+            temperature: Creativity level (0.0-1.0)
+            max_tokens: Max response length
+        
+        Returns:
+            Dict with response and metadata
+        """
         try:
+            # Validate inputs
+            if not system_prompt or not user_message:
+                return {
+                    "success": False,
+                    "error": "invalid_input",
+                    "error_message": "System prompt and user message are required"
+                }
+            
+            # Get model configuration
+            model_name = self.models.get(model_type, self.models["primary"])
+            if max_tokens is None:
+                max_tokens = self.token_limits.get(model_name, 1000)
+            
+            # Record API call start time
+            start_time = datetime.utcnow()
+            
+            # Make API call with timeout
             response = self.client.chat.completions.create(
                 model=model_name,
                 messages=[
@@ -75,9 +84,15 @@ class ModelManager:
                 ],
                 temperature=temperature,
                 max_tokens=max_tokens,
-                top_p=0.9
+                top_p=0.9,
+                timeout=config.openai_timeout_seconds
             )
-
+            
+            # Calculate processing time
+            end_time = datetime.utcnow()
+            processing_time = (end_time - start_time).total_seconds()
+            
+            # Extract response data
             result = {
                 "success": True,
                 "content": response.choices[0].message.content,
@@ -90,118 +105,229 @@ class ModelManager:
                 "metadata": {
                     "temperature": temperature,
                     "max_tokens": max_tokens,
-                    "start_time": start_time,
-                    "end_time": self._get_timestamp()
+                    "start_time": start_time.isoformat(),
+                    "end_time": end_time.isoformat(),
+                    "processing_time_seconds": round(processing_time, 3)
                 }
             }
-
-            self.metrics.record_api_call(
-                model=model_name,
-                tokens_used=response.usage.total_tokens,
-                success=True
+            
+            # Record metrics with cost tracking
+            try:
+                self.metrics.record_api_call(
+                    model=model_name,
+                    tokens_used=response.usage.total_tokens,
+                    success=True,
+                    prompt_tokens=response.usage.prompt_tokens,
+                    completion_tokens=response.usage.completion_tokens
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record API metrics: {e}")
+                # Don't fail the request if metrics fail
+            
+            logger.info(
+                f"OpenAI call successful - {model_name} - "
+                f"{response.usage.total_tokens} tokens - "
+                f"{processing_time:.2f}s"
             )
-
-            logger.info("OpenAI call successful - %s - %s tokens",
-                        model_name, response.usage.total_tokens)
+            
             return result
-
-        except openai.RateLimitError as err:
-            logger.warning("Rate limit hit: %s", err)
+            
+        except openai.RateLimitError as e:
+            logger.warning(f"Rate limit hit: {str(e)}")
             return self._handle_rate_limit_error(system_prompt, user_message, model_type)
-
-        except openai.OpenAIError as err:
-            logger.error("OpenAI API error: %s", err)
-            self._use_stub = True
-            return self._generate_stub_completion(system_prompt, user_message, model_name)
-
-        except Exception as err:
-            logger.error("Unexpected error in OpenAI call: %s", err)
-            self._use_stub = True
-            return self._generate_stub_completion(system_prompt, user_message, model_name)
-
-    def _generate_stub_completion(
-        self, system_prompt: str, user_message: str, model_name: str
+            
+        except openai.APIError as e:
+            logger.error(f"OpenAI API error: {str(e)}")
+            
+            # Record failed API call
+            try:
+                self.metrics.record_api_call(
+                    model=self.models.get(model_type, "unknown"),
+                    tokens_used=0,
+                    success=False
+                )
+            except:
+                pass
+            
+            return {
+                "success": False,
+                "error": "api_error",
+                "error_message": str(e),
+                "fallback_available": True
+            }
+        
+        except openai.APITimeoutError as e:
+            logger.error(f"OpenAI API timeout: {str(e)}")
+            
+            try:
+                self.metrics.record_api_call(
+                    model=self.models.get(model_type, "unknown"),
+                    tokens_used=0,
+                    success=False
+                )
+            except:
+                pass
+            
+            return {
+                "success": False,
+                "error": "timeout",
+                "error_message": f"Request timed out after {config.openai_timeout_seconds}s",
+                "fallback_available": True
+            }
+            
+        except (ValueError, TypeError, KeyError) as e:
+            logger.error(f"Invalid input or configuration: {str(e)}")
+            return {
+                "success": False,
+                "error": "invalid_input",
+                "error_message": str(e),
+                "fallback_available": False
+            }
+            
+        except Exception as e:
+            logger.error(f"Unexpected error in OpenAI call: {str(e)}", exc_info=True)
+            return {
+                "success": False,
+                "error": "unexpected_error",
+                "error_message": str(e),
+                "fallback_available": False
+            }
+    
+    def _handle_rate_limit_error(
+        self, 
+        system_prompt: str, 
+        user_message: str, 
+        model_type: str
+    ) -> Dict:
+        """
+        Handle rate limit by trying a different model or queuing
+        
+        Args:
+            system_prompt: System instructions
+            user_message: User input
+            model_type: Originally requested model type
+            
+        Returns:
+            Response dict (either from fallback or error)
+        """
+        if model_type == "primary":
+            # Fallback to faster model
+            logger.info("Rate limit on primary model, trying fast model")
+            
+            # Recursive call with fast model (only retries once)
+            return self.generate_completion(
+                system_prompt=system_prompt,
+                user_message=user_message,
+                model_type="fast",
+                temperature=0.3
+            )
+        
+        # Already tried fallback or using non-primary model
+        logger.error("Rate limit reached on all models")
+        
+        return {
+            "success": False,
+            "error": "rate_limit",
+            "error_message": "All models are rate limited. Please try again in a few minutes.",
+            "retry_after_seconds": 60,
+            "fallback_available": False
+        }
+    
+    def check_daily_cost_limit(self) -> Dict[str, Any]:
+        """
+        Check if daily cost limit has been reached
+        
+        Returns:
+            Dict with cost status and whether limit is reached
+        """
+        try:
+            daily_cost = self.metrics.get_daily_cost()
+            max_cost = config.max_daily_cost_usd
+            alert_threshold = config.alert_at_cost_usd
+            
+            limit_reached = daily_cost >= max_cost
+            alert_needed = daily_cost >= alert_threshold
+            
+            return {
+                "daily_cost": daily_cost,
+                "max_cost": max_cost,
+                "limit_reached": limit_reached,
+                "alert_needed": alert_needed,
+                "percentage_used": round((daily_cost / max_cost) * 100, 1) if max_cost > 0 else 0
+            }
+        except Exception as e:
+            logger.error(f"Error checking cost limit: {e}")
+            return {
+                "daily_cost": 0.0,
+                "limit_reached": False,
+                "error": str(e)
+            }
+    
+    def generate_completion_with_cost_check(
+        self,
+        system_prompt: str,
+        user_message: str,
+        model_type: str = "primary",
+        temperature: float = 0.3,
+        max_tokens: Optional[int] = None
     ) -> Dict[str, Any]:
-        """Generate deterministic stubbed response for offline/testing"""
-        content = self._build_stub_content(system_prompt, user_message)
-        total_tokens = self._estimate_tokens(system_prompt, user_message, content)
-        metadata = {
-            "temperature": 0.0,
-            "max_tokens": self.token_limits.get(model_name, 1000),
-            "start_time": self._get_timestamp(),
-            "end_time": self._get_timestamp(),
-            "stubbed": True
-        }
-
-        result = {
-            "success": True,
-            "content": content,
-            "model_used": model_name,
-            "usage": {
-                "prompt_tokens": max(total_tokens // 2, 1),
-                "completion_tokens": max(total_tokens - max(total_tokens // 2, 1), 1),
-                "total_tokens": max(total_tokens, 2)
-            },
-            "metadata": metadata
-        }
-
-        self.metrics.record_api_call(
-            model=model_name,
-            tokens_used=result["usage"]["total_tokens"],
-            success=True
+        """
+        Generate completion with automatic cost limit checking
+        
+        Args:
+            Same as generate_completion
+            
+        Returns:
+            Response dict (with cost limit check)
+        """
+        # Check cost limit before making API call
+        cost_status = self.check_daily_cost_limit()
+        
+        if cost_status["limit_reached"]:
+            logger.error(
+                f"Daily cost limit reached: ${cost_status['daily_cost']:.2f} / "
+                f"${cost_status['max_cost']:.2f}"
+            )
+            return {
+                "success": False,
+                "error": "cost_limit_reached",
+                "error_message": f"Daily cost limit of ${cost_status['max_cost']:.2f} reached",
+                "current_cost": cost_status["daily_cost"],
+                "fallback_available": False
+            }
+        
+        # Alert if approaching limit
+        if cost_status["alert_needed"]:
+            logger.warning(
+                f"Approaching cost limit: ${cost_status['daily_cost']:.2f} / "
+                f"${cost_status['max_cost']:.2f} ({cost_status['percentage_used']}%)"
+            )
+        
+        # Proceed with normal generation
+        return self.generate_completion(
+            system_prompt=system_prompt,
+            user_message=user_message,
+            model_type=model_type,
+            temperature=temperature,
+            max_tokens=max_tokens
         )
-
-        return result
-
-    def _build_stub_content(self, system_prompt: str, user_message: str) -> str:
-        message_lower = user_message.lower()
-
-        if "email request" in message_lower:
-            request = user_message.split("Email request:", 1)[-1].strip()
-            subject = self._compose_stub_subject(request)
-            return (
-                f"Subject: {subject}\n\n"
-                "Dear Team,\n\n"
-                f"This is a placeholder email responding to the request: {request}.\n"
-                "It demonstrates the email format without contacting the OpenAI API.\n\n"
-                "Best regards,\n"
-                "AI Assistant"
-            )
-
-        if "user update:" in message_lower:
-            update = user_message.split("User update:", 1)[-1].strip()
-            return (
-                f"Resolved: {update}.\n"
-                "Next steps: Continue monitoring progress and provide follow-up detail."
-            )
-
-        if "classify this user message" in system_prompt.lower():
-            return (
-                "The user appears to share a task update that may need clarification "
-                "from the project team."
-            )
-
-        return (
-            "This is a stub response produced during tests when the OpenAI service is "
-            "unavailable."
-        )
-
-    def _compose_stub_subject(self, request: str) -> str:
-        cleaned = request.lower().replace("request", "").strip() or "Update Summary"
-        words = cleaned.split()[:6]
-        capitalized = " ".join(word.capitalize() for word in words if word)
-        return capitalized or "Update Summary"
-
-    def _estimate_tokens(self, system_prompt: str, user_message: str, content: str) -> int:
-        length = len(system_prompt) + len(user_message) + len(content)
-        return max(length // 4, 8)
-
-    def _handle_rate_limit_error(self, system_prompt: str, user_message: str, model_type: str) -> Dict[str, Any]:
-        logger.info("Rate limit on primary model, using stub fallback.")
-        self._use_stub = True
-        model_name = self.models.get(model_type, self.models["primary"])
-        return self._generate_stub_completion(system_prompt, user_message, model_name)
-
-    def _get_timestamp(self) -> str:
-        from datetime import datetime
-        return datetime.utcnow().isoformat()
+    
+    def get_model_stats(self) -> Dict[str, Any]:
+        """
+        Get model usage statistics
+        
+        Returns:
+            Dict with model usage stats
+        """
+        try:
+            stats = self.metrics.get_stats()
+            return {
+                "total_api_calls": stats.get("total_api_calls", 0),
+                "successful_calls": stats.get("successful_api_calls", 0),
+                "total_tokens": stats.get("total_tokens", 0),
+                "total_cost_usd": stats.get("total_cost_usd", 0.0),
+                "average_cost_per_call": stats.get("average_cost_per_call", 0.0)
+            }
+        except Exception as e:
+            logger.error(f"Error getting model stats: {e}")
+            return {"error": str(e)}
