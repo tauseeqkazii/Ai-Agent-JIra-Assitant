@@ -1,94 +1,215 @@
 """
-System prompts for different AI tasks
+System Prompts Module
+Contains all AI prompt templates with optimized token usage
 """
 
+
 class SystemPrompts:
+    """
+    Centralized prompt templates for different AI tasks
+    Optimized for token efficiency while maintaining quality
+    """
     
-    JIRA_COMMENT_REPHRASER = """You are a professional Jira comment writer for a corporate environment. 
+    # =========================================================================
+    # JIRA COMMENT REPHRASER (Optimized: ~85 tokens, was ~150)
+    # =========================================================================
+    JIRA_COMMENT_REPHRASER = """Convert casual task updates to professional Jira comments.
 
-Your job is to convert casual employee task updates into professional, clear Jira comments.
+Rules:
+- Be concise and professional
+- Present tense for completed work, future for pending
+- Keep technical details and meaning
+- Never add info not in original
+- Only mark complete if user says "done/finished/completed"
 
-RULES:
-1. Use professional tone but keep it concise
-2. Use present tense for completed work, future tense for pending items
-3. Be specific about technical details when mentioned
-4. Keep the original meaning and all important details
-5. Use bullet points for multiple items if needed
-6. Never add information that wasn't in the original message
-7. Never mark tasks as complete unless the user explicitly says "done", "finished", "completed"
+Examples:
+"fixed button bug, tested staging" → "Resolved button alignment issue. Testing completed on staging environment."
+"working on login" → "Currently investigating login functionality."
+"done with API" → "API endpoint implementation completed."
 
-EXAMPLES:
-Input: "I fixed the button alignment issue and tested it on staging. Waiting for QA."
-Output: "Resolved button alignment issue. Testing completed on staging environment. Pending QA review before production deployment."
+Convert this update:"""
 
-Input: "working on the login bug, should be done by tomorrow"
-Output: "Currently investigating login bug. Expected completion by tomorrow."
+    # =========================================================================
+    # EMAIL GENERATOR (Optimized: ~110 tokens, was ~200)
+    # =========================================================================
+    EMAIL_GENERATOR = """Write professional business emails based on user requests.
 
-Input: "done with the API endpoint"
-Output: "API endpoint implementation completed."
+Format: Subject line, greeting, body, closing
 
-Convert the following casual update into a professional Jira comment:"""
+Rules:
+- Use placeholders for unknown info: [Manager Name], [Date], [Your Name]
+- Match tone to recipient (formal for managers)
+- Be concise but complete
+- Always include proper subject and closing
 
-    EMAIL_GENERATOR = """You are a professional email writer for corporate communications.
-
-Your job is to write professional, appropriate emails based on user requests.
-
-RULES:
-1. Use proper business email format (subject, greeting, body, closing)
-2. Match the tone to the recipient (formal for managers, friendly for colleagues)
-3. Be concise but include all necessary information
-4. Use professional language throughout
-5. Include appropriate subject line
-6. Always end with proper business closing
-
-EMAIL TYPES YOU HANDLE:
-- Sick leave requests
-- PTO/vacation requests
-- Meeting requests
-- Status updates to managers
-- General professional correspondence
-
-EXAMPLES:
-Request: "Write an email for sick leave tomorrow"
+Example:
+Request: "sick leave tomorrow"
 Output:
 Subject: Sick Leave Request - [Date]
 
 Dear [Manager Name],
 
-I am writing to inform you that I will not be able to come to work tomorrow due to illness. I will monitor emails periodically and will return as soon as I am well enough to work effectively.
+I am unable to work tomorrow due to illness. I will monitor emails and address urgent matters remotely if possible.
 
-I will ensure any urgent matters are addressed remotely if possible, and will coordinate with the team regarding any time-sensitive tasks.
-
-Thank you for your understanding.
+Thank you for understanding.
 
 Best regards,
 [Your Name]
 
-Write a professional email based on this request:"""
+Write this email:"""
 
-    CLASSIFICATION_HELPER = """You are an intent classification assistant for a Jira productivity tool.
+    # =========================================================================
+    # CLASSIFICATION HELPER (Optimized: ~95 tokens, was ~140)
+    # =========================================================================
+    CLASSIFICATION_HELPER = """You are a Jira assistant intent classifier. Determine what the user wants to do.
 
-A user has sent a message that couldn't be automatically classified. Your job is to:
-1. Determine what the user wants to do
-2. Extract any relevant task information
-3. Provide a clear response or redirect to appropriate action
+Possible intents:
+- task_completion: Mark task done
+- task_update: Update progress
+- productivity_query: Ask about stats
+- email_request: Write an email
+- general_question: Other questions
+- unclear: Ambiguous request
 
-POSSIBLE USER INTENTS:
-- Mark task as complete
-- Update task progress
-- Ask about productivity stats
-- Request email generation  
-- General question about tasks
-- Something else entirely
+CRITICAL: Return ONLY valid JSON, no markdown, no extra text.
 
-RESPONSE FORMAT:
-Provide a JSON response with:
+Format:
 {
-  "intent": "task_completion|task_update|productivity_query|email_request|general_question|other",
-  "confidence": 0.0-1.0,
-  "extracted_info": {...},
-  "suggested_action": "what the system should do next",
-  "user_friendly_response": "response to show the user"
+  "intent": "task_completion",
+  "confidence": 0.9,
+  "extracted_info": {"task_id": "123"},
+  "user_friendly_response": "I understand you want to mark task 123 as complete."
 }
 
-Classify this user message:"""
+Classify:"""
+
+    # =========================================================================
+    # HELPER METHOD: Build Context-Aware Prompts
+    # =========================================================================
+    
+    @staticmethod
+    def build_comment_prompt_with_context(
+        user_role: str = None,
+        project_type: str = None,
+        task_type: str = None
+    ) -> str:
+        """
+        Build context-aware comment rephrasing prompt
+        
+        Args:
+            user_role: User's role (e.g., "Senior Engineer")
+            project_type: Type of project (e.g., "Mobile App")
+            task_type: Type of task (e.g., "Bug Fix")
+            
+        Returns:
+            Prompt with added context
+        """
+        base_prompt = SystemPrompts.JIRA_COMMENT_REPHRASER
+        
+        context_parts = []
+        if user_role:
+            context_parts.append(f"User role: {user_role}")
+        if project_type:
+            context_parts.append(f"Project: {project_type}")
+        if task_type:
+            context_parts.append(f"Task type: {task_type}")
+        
+        if context_parts:
+            context = "\nContext: " + ", ".join(context_parts)
+            return base_prompt + context
+        
+        return base_prompt
+    
+    @staticmethod
+    def build_email_prompt_with_context(
+        user_name: str = None,
+        manager_name: str = None,
+        department: str = None
+    ) -> str:
+        """
+        Build context-aware email generation prompt
+        
+        Args:
+            user_name: User's name
+            manager_name: Manager's name
+            department: User's department
+            
+        Returns:
+            Prompt with added context
+        """
+        base_prompt = SystemPrompts.EMAIL_GENERATOR
+        
+        context_parts = []
+        if user_name:
+            context_parts.append(f"From: {user_name}")
+        if manager_name:
+            context_parts.append(f"To: {manager_name}")
+        if department:
+            context_parts.append(f"Department: {department}")
+        
+        if context_parts:
+            context = "\nContext: " + ", ".join(context_parts)
+            return base_prompt + context
+        
+        return base_prompt
+    
+    # =========================================================================
+    # VALIDATION PROMPTS (New: For response validation)
+    # =========================================================================
+    
+    VALIDATE_PROFESSIONAL_TONE = """Rate the professionalism of this text on a scale of 0.0 to 1.0.
+
+Consider:
+- Professional vocabulary
+- Appropriate tone
+- Grammar and spelling
+- Clarity and conciseness
+
+Text: {text}
+
+Return only a number between 0.0 and 1.0."""
+
+    # =========================================================================
+    # METADATA
+    # =========================================================================
+    
+    PROMPT_VERSION = "2.0"
+    LAST_UPDATED = "2025-01-09"
+    
+    @classmethod
+    def get_all_prompts(cls) -> dict:
+        """Get all available prompts"""
+        return {
+            "comment_rephraser": cls.JIRA_COMMENT_REPHRASER,
+            "email_generator": cls.EMAIL_GENERATOR,
+            "classification_helper": cls.CLASSIFICATION_HELPER,
+            "validate_tone": cls.VALIDATE_PROFESSIONAL_TONE
+        }
+    
+    @classmethod
+    def get_prompt_stats(cls) -> dict:
+        """Get statistics about prompt token usage"""
+        import tiktoken
+        
+        try:
+            # Use tiktoken to count tokens (GPT-4 encoding)
+            encoding = tiktoken.encoding_for_model("gpt-4")
+            
+            stats = {}
+            for name, prompt in cls.get_all_prompts().items():
+                token_count = len(encoding.encode(prompt))
+                stats[name] = {
+                    "characters": len(prompt),
+                    "estimated_tokens": token_count
+                }
+            
+            return stats
+        except Exception as e:
+            # If tiktoken not available, use rough estimate
+            return {
+                name: {
+                    "characters": len(prompt),
+                    "estimated_tokens": len(prompt) // 4  # Rough estimate
+                }
+                for name, prompt in cls.get_all_prompts().items()
+            }
