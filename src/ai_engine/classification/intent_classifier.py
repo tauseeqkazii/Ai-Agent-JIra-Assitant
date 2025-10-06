@@ -4,7 +4,7 @@ Determines routing decisions using pattern matching
 """
 
 import re
-from typing import Dict, Optional
+from typing import Dict, Optional,Any
 from enum import Enum
 from dataclasses import dataclass, field
 import logging
@@ -164,6 +164,63 @@ class IntentClassifier:
             confidence=0.60,
             matched_pattern="ambiguous"
         )
+        
+    # Add new method after classify()
+
+    def is_within_scope(self, user_input: str) -> Dict[str, Any]:
+        """
+        Check if user input is within supported scope
+        
+        Returns:
+            Dict with in_scope boolean and reason
+        """
+        if not user_input or not user_input.strip():
+            return {"in_scope": False, "reason": "empty_input"}
+        
+        user_input_lower = user_input.lower()
+        
+        # Define out-of-scope indicators
+        out_of_scope_patterns = [
+            # Questions about external info
+            r'\b(weather|news|stock|price|score|game|movie)\b',
+            # General knowledge questions
+            r'\b(what is|who is|when did|where is|how to)\b(?!.*(task|email|jira))',
+            # Conversational
+            r'\b(hello|hi|hey|thanks|bye|goodbye)\b$',
+            # Math/calculations (unless task-related)
+            r'^\s*\d+\s*[\+\-\*/]\s*\d+',
+        ]
+        
+        # Check if input matches out-of-scope patterns
+        import re
+        for pattern in out_of_scope_patterns:
+            if re.search(pattern, user_input_lower):
+                return {
+                    "in_scope": False,
+                    "reason": "out_of_scope_content",
+                    "suggestion": "I can only help with Jira task updates or professional email generation."
+                }
+        
+        # Check if it contains task-related or email-related keywords
+        in_scope_keywords = [
+            'task', 'jira', 'bug', 'feature', 'issue', 'ticket',
+            'email', 'message', 'write', 'compose', 'send',
+            'done', 'completed', 'finished', 'working', 'testing',
+            'productive', 'productivity', 'stats', 'report'
+        ]
+        
+        has_relevant_keyword = any(kw in user_input_lower for kw in in_scope_keywords)
+        
+        # If no relevant keywords and input is a question, likely out of scope
+        if not has_relevant_keyword and '?' in user_input:
+            return {
+                "in_scope": False,
+                "reason": "unrelated_question",
+                "suggestion": "I can only help with Jira task updates or professional email generation."
+            }
+        
+        # Assume in scope if we can't definitively say it's out of scope
+        return {"in_scope": True}
     
     def extract_task_info(self, user_input: str) -> Dict:
         """

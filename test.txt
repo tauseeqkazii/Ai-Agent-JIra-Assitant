@@ -1,0 +1,5076 @@
+this is config/settings.py 
+"""
+Enhanced AI Engine Configuration
+Centralized configuration with validation and environment management
+"""
+
+from pydantic import BaseSettings, validator, Field
+from typing import Dict, Any, Optional
+from pathlib import Path
+import os
+
+class AIEngineConfig(BaseSettings):
+    """Complete AI Engine Configuration with validation"""
+    
+    # ============================================================================
+    # OpenAI Configuration
+    # ============================================================================
+    openai_api_key: str = Field(..., description="OpenAI API key (required)")
+    openai_primary_model: str = Field(
+        default="gpt-4o",  # Updated to latest model
+        description="Main model for complex tasks"
+    )
+    openai_fast_model: str = Field(
+        default="gpt-3.5-turbo-0125",  # Updated to latest version
+        description="Faster model for simple tasks"
+    )
+    openai_classification_model: str = Field(
+        default="gpt-3.5-turbo-0125",
+        description="Model for classification fallbacks"
+    )
+    openai_max_tokens_primary: int = Field(
+        default=2000,  # Increased from 1500 (was too low)
+        ge=100,
+        le=4000,
+        description="Max tokens for primary model"
+    )
+    openai_max_tokens_fast: int = Field(
+        default=1000,
+        ge=100,
+        le=4000,
+        description="Max tokens for fast model"
+    )
+    openai_timeout_seconds: int = Field(
+        default=30,
+        ge=5,
+        le=120,
+        description="API call timeout in seconds"
+    )
+    
+    # ============================================================================
+    # Model Pricing (per 1K tokens) - Updated to latest pricing
+    # ============================================================================
+    gpt4o_input_cost: float = Field(
+        default=0.0025,
+        description="GPT-4o input cost per 1K tokens"
+    )
+    gpt4o_output_cost: float = Field(
+        default=0.01,
+        description="GPT-4o output cost per 1K tokens"
+    )
+    gpt35_input_cost: float = Field(
+        default=0.0005,
+        description="GPT-3.5 input cost per 1K tokens"
+    )
+    gpt35_output_cost: float = Field(
+        default=0.0015,
+        description="GPT-3.5 output cost per 1K tokens"
+    )
+    
+    # ============================================================================
+    # AI Processing Thresholds
+    # ============================================================================
+    similarity_threshold: float = Field(
+        default=0.85,
+        ge=0.0,
+        le=1.0,
+        description="Semantic similarity threshold"
+    )
+    confidence_threshold: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence for route acceptance"
+    )
+    quality_threshold: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Minimum quality score for generated content"
+    )
+    auto_approval_threshold: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Minimum score for auto-approval"
+    )
+    
+    # ============================================================================
+    # Caching Configuration
+    # ============================================================================
+    cache_enabled: bool = Field(
+        default=True,
+        description="Enable/disable caching system"
+    )
+    cache_ttl_comment_minutes: int = Field(
+        default=1440,  # 24 hours
+        ge=1,
+        description="Cache TTL for comments in minutes"
+    )
+    cache_ttl_email_minutes: int = Field(
+        default=1440,  # 24 hours
+        ge=1,
+        description="Cache TTL for emails in minutes"
+    )
+    cache_ttl_routing_minutes: int = Field(
+        default=60,  # 1 hour
+        ge=1,
+        description="Cache TTL for routing decisions in minutes"
+    )
+    cache_max_size: int = Field(
+        default=1000,  # Conservative limit
+        ge=100,
+        le=100000,
+        description="Maximum cache entries"
+    )
+    
+    # ============================================================================
+    # Semantic Caching (Optional - Advanced Feature)
+    # ============================================================================
+    use_embedding_cache: bool = Field(
+        default=False,  # Start disabled, enable later if needed
+        description="Enable semantic similarity caching (requires sentence-transformers)"
+    )
+    
+    # ============================================================================
+    # Rate Limiting & Performance
+    # ============================================================================
+    max_requests_per_minute: int = Field(
+        default=100,
+        ge=1,
+        description="Maximum requests per minute per user"
+    )
+    max_tokens_per_hour: int = Field(
+        default=50000,
+        ge=1000,
+        description="Maximum tokens consumed per hour"
+    )
+    
+    # ============================================================================
+    # Cost Controls
+    # ============================================================================
+    max_daily_cost_usd: float = Field(
+        default=100.0,
+        ge=0.0,
+        description="Maximum daily API cost in USD"
+    )
+    alert_at_cost_usd: float = Field(
+        default=80.0,
+        ge=0.0,
+        description="Send alert when daily cost reaches this amount"
+    )
+    
+    # ============================================================================
+    # Validation & Quality Control
+    # ============================================================================
+    profanity_filter_enabled: bool = Field(
+        default=True,
+        description="Enable profanity filtering"
+    )
+    sensitive_info_detection: bool = Field(
+        default=True,
+        description="Detect sensitive information (SSN, credit cards, etc.)"
+    )
+    length_validation_enabled: bool = Field(
+        default=True,
+        description="Validate response length"
+    )
+    max_input_length: int = Field(
+        default=5000,
+        ge=100,
+        le=50000,
+        description="Maximum input length in characters"
+    )
+    
+    # ============================================================================
+    # Monitoring & Logging
+    # ============================================================================
+    detailed_logging: bool = Field(
+        default=True,
+        description="Enable detailed logging"
+    )
+    metrics_collection_enabled: bool = Field(
+        default=True,
+        description="Enable metrics collection"
+    )
+    metrics_max_records: int = Field(
+        default=10000,
+        ge=1000,
+        description="Maximum metrics records to keep in memory"
+    )
+    performance_monitoring: bool = Field(
+        default=True,
+        description="Enable performance monitoring"
+    )
+    alert_on_high_error_rate: bool = Field(
+        default=True,
+        description="Send alerts on high error rates"
+    )
+    error_rate_threshold: float = Field(
+        default=0.1,  # 10%
+        ge=0.0,
+        le=1.0,
+        description="Error rate threshold for alerts"
+    )
+    
+    # ============================================================================
+    # Circuit Breaker Configuration
+    # ============================================================================
+    circuit_breaker_enabled: bool = Field(
+        default=True,
+        description="Enable circuit breaker pattern"
+    )
+    circuit_breaker_failure_threshold: int = Field(
+        default=5,
+        ge=1,
+        description="Failures before opening circuit"
+    )
+    circuit_breaker_timeout_minutes: int = Field(
+        default=5,
+        ge=1,
+        description="Minutes before attempting to close circuit"
+    )
+    
+    # ============================================================================
+    # Environment Configuration
+    # ============================================================================
+    environment: str = Field(
+        default="development",
+        description="Environment: development, staging, or production"
+    )
+    debug_mode: bool = Field(
+        default=True,
+        description="Enable debug mode (disable in production)"
+    )
+    test_mode: bool = Field(
+        default=False,
+        description="Enable test mode (mocks external calls)"
+    )
+    
+    # ============================================================================
+    # Validators
+    # ============================================================================
+    
+    @validator('openai_api_key')
+    def validate_openai_key(cls, v):
+        """Validate OpenAI API key format"""
+        if not v:
+            raise ValueError('OpenAI API key is required')
+        if not v.startswith('sk-'):
+            raise ValueError('Invalid OpenAI API key format (must start with sk-)')
+        if len(v) < 20:
+            raise ValueError('OpenAI API key appears to be too short')
+        return v
+    
+    @validator('environment')
+    def validate_environment(cls, v):
+        """Validate environment value"""
+        allowed = ['development', 'staging', 'production']
+        if v not in allowed:
+            raise ValueError(f'Environment must be one of: {", ".join(allowed)}')
+        return v
+    
+    @validator('debug_mode')
+    def validate_debug_mode(cls, v, values):
+        """Warn if debug mode is enabled in production"""
+        if v and values.get('environment') == 'production':
+            # Don't raise error, but this will be caught by validation check
+            pass
+        return v
+    
+    @validator('alert_at_cost_usd')
+    def validate_cost_alert(cls, v, values):
+        """Ensure alert threshold is less than max cost"""
+        max_cost = values.get('max_daily_cost_usd')
+        if max_cost and v > max_cost:
+            raise ValueError('alert_at_cost_usd must be less than max_daily_cost_usd')
+        return v
+    
+    @validator('cache_max_size')
+    def validate_cache_size(cls, v):
+        """Validate cache size is reasonable"""
+        if v > 10000:
+            # Warn but allow
+            import logging
+            logging.warning(f"Cache size {v} is very large - may consume significant memory")
+        return v
+    
+    # ============================================================================
+    # Properties for Easy Access
+    # ============================================================================
+    
+    @property
+    def is_production(self) -> bool:
+        """Check if running in production"""
+        return self.environment == "production"
+    
+    @property
+    def is_development(self) -> bool:
+        """Check if running in development"""
+        return self.environment == "development"
+    
+    @property
+    def is_staging(self) -> bool:
+        """Check if running in staging"""
+        return self.environment == "staging"
+    
+    @property
+    def model_config_map(self) -> Dict[str, str]:
+        """Get model configuration mapping"""
+        return {
+            "primary": self.openai_primary_model,
+            "fast": self.openai_fast_model,
+            "classification": self.openai_classification_model
+        }
+    
+    @property
+    def token_limits(self) -> Dict[str, int]:
+        """Get token limits per model"""
+        return {
+            self.openai_primary_model: self.openai_max_tokens_primary,
+            self.openai_fast_model: self.openai_max_tokens_fast,
+            self.openai_classification_model: self.openai_max_tokens_fast
+        }
+    
+    @property
+    def cost_config(self) -> Dict[str, Dict[str, float]]:
+        """Get pricing configuration"""
+        return {
+            "gpt-4o": {
+                "input": self.gpt4o_input_cost,
+                "output": self.gpt4o_output_cost
+            },
+            "gpt-4-turbo-preview": {
+                "input": 0.01,
+                "output": 0.03
+            },
+            "gpt-3.5-turbo": {
+                "input": self.gpt35_input_cost,
+                "output": self.gpt35_output_cost
+            },
+            "gpt-3.5-turbo-0125": {
+                "input": self.gpt35_input_cost,
+                "output": self.gpt35_output_cost
+            }
+        }
+    
+    class Config:
+        env_file = ".env"
+        # REMOVED: env_prefix = "AI_ENGINE_"  # Causes backward compatibility issues
+        case_sensitive = False
+        
+        # Example .env file structure
+        env_file_example = """
+        # OpenAI Configuration
+        OPENAI_API_KEY=sk-your-key-here
+        OPENAI_PRIMARY_MODEL=gpt-4o
+        
+        # Environment
+        ENVIRONMENT=production
+        DEBUG_MODE=false
+        
+        # Cost Limits
+        MAX_DAILY_COST_USD=100.0
+        ALERT_AT_COST_USD=80.0
+        
+        # Caching
+        CACHE_ENABLED=true
+        USE_EMBEDDING_CACHE=false
+        """
+
+
+# ============================================================================
+# Global Configuration Instance
+# ============================================================================
+config = AIEngineConfig()
+
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+def reload_config():
+    """Reload configuration from environment"""
+    global config
+    config = AIEngineConfig()
+    return config
+
+
+def get_config_summary() -> Dict[str, Any]:
+    """Get configuration summary for logging"""
+    return {
+        "environment": config.environment,
+        "primary_model": config.openai_primary_model,
+        "cache_enabled": config.cache_enabled,
+        "semantic_cache": config.use_embedding_cache,
+        "max_daily_cost": config.max_daily_cost_usd,
+        "circuit_breaker": config.circuit_breaker_enabled,
+        "debug_mode": config.debug_mode
+    }
+
+this is src/ai_engine/classification/intent_classifier.py
+
+"""
+Intent Classification Module
+Determines routing decisions using pattern matching
+"""
+
+import re
+from typing import Dict, Optional
+from enum import Enum
+from dataclasses import dataclass, field
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class RouteType(Enum):
+    """Available routing types for user requests"""
+    BACKEND_COMPLETION = "backend_completion"          # Simple "done" statements
+    BACKEND_PRODUCTIVITY = "backend_productivity"      # Stats queries
+    LLM_REPHRASING = "llm_rephrasing"                 # Complex updates needing AI
+    LLM_EMAIL = "llm_email"                           # Email generation
+    LLM_CLASSIFICATION = "llm_classification"          # Ambiguous cases
+
+
+@dataclass
+class ClassificationResult:
+    """Result of intent classification"""
+    route_type: RouteType
+    confidence: float
+    matched_pattern: str = ""
+    extracted_entities: Dict = field(default_factory=dict)  # Fixed: use default_factory
+
+
+class IntentClassifier:
+    """
+    Classifies user intent using regex patterns
+    Routes simple requests to backend, complex ones to LLM
+    """
+    
+    def __init__(self):
+        # Compile regex patterns once for performance
+        self._compile_patterns()
+        
+        # Load confidence thresholds from config
+        from ..core.config import config
+        self.confidence_threshold = config.confidence_threshold
+        
+        logger.info("IntentClassifier initialized with compiled patterns")
+    
+    def _compile_patterns(self):
+        """Compile all regex patterns once for better performance"""
+        
+        # Simple completion patterns (backend only)
+        completion_patterns = [
+            r'\b(done|completed|finished|complete)\b',
+            r'\btask\s+(is\s+)?(done|finished|complete)',
+            r'\bmark\s+as\s+(done|complete)',
+            r'\b(finish|close)\s+task',
+            r'^\s*(done|finished|completed)\s*$',
+        ]
+        self.completion_regex = re.compile('|'.join(f'({p})' for p in completion_patterns), re.IGNORECASE)
+        
+        # Productivity query patterns (backend calculation)
+        productivity_patterns = [
+            r'how\s+productive\s+was\s+I',
+            r'my\s+productivity\s+(this\s+week|last\s+week)',
+            r'productivity\s+(score|stats|report)',
+            r'how\s+many\s+tasks\s+(completed|finished)',
+            r'completion\s+rate',
+            r'weekly\s+(summary|report)',
+        ]
+        self.productivity_regex = re.compile('|'.join(f'({p})' for p in productivity_patterns), re.IGNORECASE)
+        
+        # Email generation patterns
+        email_patterns = [
+            r'write\s+(an?\s+)?email',
+            r'send\s+(an?\s+)?email',
+            r'compose\s+(an?\s+)?email',
+            r'email\s+(my\s+)?manager',
+            r'sick\s+leave\s+(request|email)',
+            r'(pto|vacation)\s+(request|email)',
+        ]
+        self.email_regex = re.compile('|'.join(f'({p})' for p in email_patterns), re.IGNORECASE)
+        
+        # Complex update indicators (need LLM rephrasing)
+        complex_indicators = [
+            r'\b(tested|testing|fixed|fixing|implemented|working on)\b',
+            r'\b(waiting for|blocked by|pending)\b',
+            r'\b(staging|production|deployment)\b',
+            r'\b(issue|bug|problem|error)\b',
+            r'\b(review|approval|qa|quality)\b',
+        ]
+        self.complex_regex = re.compile('|'.join(f'({p})' for p in complex_indicators), re.IGNORECASE)
+    
+    def classify(self, user_input: str) -> ClassificationResult:
+        """
+        Main classification method - determines routing decision
+        
+        Args:
+            user_input: Raw user message
+            
+        Returns:
+            ClassificationResult with route type and confidence
+        """
+        if not user_input or not user_input.strip():
+            logger.warning("Empty input received for classification")
+            return ClassificationResult(
+                route_type=RouteType.LLM_CLASSIFICATION,
+                confidence=0.0,
+                matched_pattern="empty_input"
+            )
+        
+        # Validate input length
+        from ..core.config import config
+        if len(user_input) > config.max_input_length:
+            logger.warning(f"Input too long: {len(user_input)} chars")
+            user_input = user_input[:config.max_input_length]
+        
+        # Normalize input once
+        user_input_normalized = user_input.strip()
+        
+        # Priority 1: Check for simple completions (highest confidence)
+        if self.completion_regex.search(user_input_normalized):
+            logger.debug("Matched completion pattern")
+            return ClassificationResult(
+                route_type=RouteType.BACKEND_COMPLETION,
+                confidence=0.95,
+                matched_pattern="completion"
+            )
+        
+        # Priority 2: Check for productivity queries
+        if self.productivity_regex.search(user_input_normalized):
+            logger.debug("Matched productivity pattern")
+            return ClassificationResult(
+                route_type=RouteType.BACKEND_PRODUCTIVITY,
+                confidence=0.90,
+                matched_pattern="productivity"
+            )
+        
+        # Priority 3: Check for email requests
+        if self.email_regex.search(user_input_normalized):
+            logger.debug("Matched email pattern")
+            return ClassificationResult(
+                route_type=RouteType.LLM_EMAIL,
+                confidence=0.85,
+                matched_pattern="email"
+            )
+        
+        # Priority 4: Check if it's a complex update (needs rephrasing)
+        complex_matches = len(self.complex_regex.findall(user_input_normalized))
+        
+        # If multiple complex indicators or long text, route to LLM
+        if complex_matches >= 2 or len(user_input_normalized) > 50:
+            logger.debug(f"Complex update detected: {complex_matches} indicators")
+            return ClassificationResult(
+                route_type=RouteType.LLM_REPHRASING,
+                confidence=0.80,
+                matched_pattern=f"complex_indicators_{complex_matches}"
+            )
+        
+        # Default: send to LLM for classification (ambiguous cases)
+        logger.debug("No clear pattern matched, defaulting to LLM classification")
+        return ClassificationResult(
+            route_type=RouteType.LLM_CLASSIFICATION,
+            confidence=0.60,
+            matched_pattern="ambiguous"
+        )
+    
+    def extract_task_info(self, user_input: str) -> Dict:
+        """
+        Extract task-related information from user input
+        
+        Args:
+            user_input: Raw user message
+            
+        Returns:
+            Dictionary with extracted entities (task IDs, status keywords)
+        """
+        if not user_input:
+            return {}
+        
+        entities = {}
+        
+        try:
+            # Extract task numbers (e.g., "task #123", "JIRA-456", "BUG-789")
+            # Fixed: Changed pattern to work with JIRA-style IDs
+            task_pattern = r'(?:task\s*#?|[A-Z]+-?)(\d+)\b'
+            task_matches = re.findall(task_pattern, user_input, re.IGNORECASE)
+            if task_matches:
+                entities['task_ids'] = list(set(task_matches))  # Remove duplicates
+                logger.debug(f"Extracted task IDs: {entities['task_ids']}")
+            
+            # Extract completion status keywords
+            status_keywords = ['done', 'completed', 'finished', 'pending', 'blocked', 'testing', 'in progress', 'resolved']
+            found_keywords = [kw for kw in status_keywords if kw in user_input.lower()]
+            if found_keywords:
+                entities['status_keywords'] = found_keywords
+                logger.debug(f"Extracted status keywords: {found_keywords}")
+            
+            # Extract technical terms (for context)
+            technical_terms = ['api', 'bug', 'feature', 'database', 'frontend', 'backend', 'deployment', 'staging', 'production']
+            found_terms = [term for term in technical_terms if term in user_input.lower()]
+            if found_terms:
+                entities['technical_terms'] = found_terms
+                logger.debug(f"Extracted technical terms: {found_terms}")
+        
+        except Exception as e:
+            logger.error(f"Error extracting task info: {e}")
+            # Return empty dict instead of crashing
+        
+        return entities
+    
+    def get_pattern_stats(self) -> Dict:
+        """
+        Get statistics about pattern matching (for monitoring)
+        
+        Returns:
+            Dictionary with pattern configuration info
+        """
+        return {
+            "patterns_compiled": True,
+            "confidence_threshold": self.confidence_threshold,
+            "route_types": [rt.value for rt in RouteType],
+        }
+
+this is src/ai_engine/core/router.py
+
+  """
+Task Router Module
+Routes user requests to appropriate handlers (backend vs LLM)
+"""
+
+import hashlib
+import logging
+from typing import Dict, Any, Optional
+from datetime import datetime
+
+from ..classification.intent_classifier import IntentClassifier, RouteType, ClassificationResult
+from ..utils.cache import CacheManager
+from ..utils.metrics import MetricsCollector
+from ..core.config import config
+
+logger = logging.getLogger(__name__)
+
+
+class TaskRouter:
+    """
+    Routes user requests based on intent classification
+    Decides between backend shortcuts and LLM processing
+    """
+    
+    def __init__(
+        self, 
+        cache_manager: Optional[CacheManager] = None,
+        metrics: Optional[MetricsCollector] = None
+    ):
+        """
+        Initialize router with optional dependency injection
+        
+        Args:
+            cache_manager: Optional cache manager instance (for shared caching)
+            metrics: Optional metrics collector instance (for shared metrics)
+        """
+        self.intent_classifier = IntentClassifier()
+        self.cache_manager = cache_manager or CacheManager()
+        self.metrics = metrics or MetricsCollector()
+        
+        logger.info("TaskRouter initialized")
+        
+    def route_request(self, user_input: str, user_context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Main routing method - decides whether to use backend shortcuts or LLM
+        
+        Args:
+            user_input: Raw user message
+            user_context: User info (id, current tasks, etc.)
+            
+        Returns:
+            Dict with routing decision and metadata
+        """
+        try:
+            # Validate inputs
+            if not user_input or not user_input.strip():
+                logger.warning("Empty input received in router")
+                return self._create_error_response(
+                    "empty_input",
+                    "Please provide a message",
+                    user_input,
+                    user_context
+                )
+            
+            if not user_context:
+                user_context = {}
+                logger.warning("No user context provided, using empty dict")
+            
+            # Step 1: Classify the intent
+            classification = self.intent_classifier.classify(user_input)
+            
+            logger.debug(
+                f"Classified as {classification.route_type.value} "
+                f"with confidence {classification.confidence:.2f}"
+            )
+            
+            # Step 2: Check cache for similar requests (if confidence is high)
+            cache_key = self._generate_cache_key(user_input, classification.route_type)
+            cached_result = None
+            
+            if config.cache_enabled and classification.confidence >= config.confidence_threshold:
+                cached_result = self.cache_manager.get(cache_key)
+                
+                if cached_result:
+                    logger.info("Cache hit for routing decision")
+                    # Add cache hit indicator
+                    cached_result['from_cache'] = True
+                    cached_result['cache_timestamp'] = datetime.utcnow().isoformat()
+                    return cached_result
+            
+            # Step 3: Build routing response
+            routing_response = {
+                "route_type": classification.route_type.value,
+                "confidence": classification.confidence,
+                "requires_llm": self._requires_llm(classification.route_type),
+                "user_input": user_input,
+                "user_context": user_context,
+                "classification_details": {
+                    "matched_pattern": classification.matched_pattern,
+                    "extracted_entities": self.intent_classifier.extract_task_info(user_input)
+                },
+                "processing_metadata": {
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "user_id": user_context.get("user_id"),
+                    "session_id": user_context.get("session_id"),
+                    "router_version": "2.0"
+                },
+                "from_cache": False
+            }
+            
+            # Step 4: Cache the result if confidence is high
+            if config.cache_enabled and classification.confidence >= config.confidence_threshold:
+                try:
+                    self.cache_manager.set(
+                        cache_key, 
+                        routing_response, 
+                        ttl_minutes=config.cache_ttl_routing_minutes
+                    )
+                    logger.debug(f"Cached routing result for key: {cache_key[:16]}...")
+                except Exception as e:
+                    logger.warning(f"Failed to cache routing result: {e}")
+                    # Continue without caching - don't fail the request
+            
+            # Step 5: Log metrics
+            try:
+                self.metrics.record_classification(
+                    route_type=classification.route_type.value,
+                    confidence=classification.confidence,
+                    user_id=user_context.get("user_id", "unknown")
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record classification metrics: {e}")
+                # Continue without metrics - don't fail the request
+            
+            logger.info(
+                f"Routed request: {classification.route_type.value} "
+                f"(confidence: {classification.confidence:.2f})"
+            )
+            
+            return routing_response
+            
+        except Exception as e:
+            logger.error(f"Routing error: {str(e)}", exc_info=True)
+            # Fallback to LLM classification on any error
+            return self._create_fallback_response(user_input, user_context, str(e))
+    
+    def _requires_llm(self, route_type: RouteType) -> bool:
+        """
+        Determine if this route requires LLM processing
+        
+        Args:
+            route_type: The classified route type
+            
+        Returns:
+            True if LLM processing is needed
+        """
+        llm_routes = {
+            RouteType.LLM_REPHRASING,
+            RouteType.LLM_EMAIL, 
+            RouteType.LLM_CLASSIFICATION
+        }
+        return route_type in llm_routes
+    
+    def _generate_cache_key(self, user_input: str, route_type: RouteType) -> str:
+        """
+        Generate deterministic cache key using MD5 hash
+        
+        Args:
+            user_input: User's message
+            route_type: Classified route type
+            
+        Returns:
+            Cache key string
+        """
+        # Normalize input for consistent caching
+        normalized = user_input.lower().strip()[:200]  # Limit to 200 chars
+        
+        # Create content to hash
+        content = f"{route_type.value}:{normalized}"
+        
+        # Use MD5 for deterministic hashing (fixed from built-in hash())
+        hash_value = hashlib.md5(content.encode('utf-8')).hexdigest()[:16]
+        
+        return f"route:{route_type.value}:{hash_value}"
+    
+    def _create_error_response(
+        self, 
+        error_type: str, 
+        error_message: str,
+        user_input: str,
+        user_context: Dict
+    ) -> Dict:
+        """
+        Create error response for invalid input
+        
+        Args:
+            error_type: Type of error
+            error_message: Human-readable error message
+            user_input: Original user input
+            user_context: User context
+            
+        Returns:
+            Error response dictionary
+        """
+        return {
+            "success": False,
+            "error": error_type,
+            "error_message": error_message,
+            "route_type": "error",
+            "requires_llm": False,
+            "user_input": user_input,
+            "user_context": user_context,
+            "processing_metadata": {
+                "timestamp": datetime.utcnow().isoformat(),
+                "user_id": user_context.get("user_id", "unknown"),
+                "session_id": user_context.get("session_id")
+            }
+        }
+    
+    def _create_fallback_response(
+        self, 
+        user_input: str, 
+        user_context: Dict, 
+        error: str
+    ) -> Dict:
+        """
+        Create fallback response when classification fails
+        
+        Args:
+            user_input: User's message
+            user_context: User context
+            error: Error message
+            
+        Returns:
+            Fallback response routing to LLM classification
+        """
+        logger.warning(f"Creating fallback response due to error: {error}")
+        
+        return {
+            "route_type": RouteType.LLM_CLASSIFICATION.value,
+            "confidence": 0.5,
+            "requires_llm": True,
+            "user_input": user_input,
+            "user_context": user_context,
+            "error": error,
+            "fallback": True,
+            "processing_metadata": {
+                "timestamp": datetime.utcnow().isoformat(),
+                "user_id": user_context.get("user_id", "unknown"),
+                "session_id": user_context.get("session_id"),
+                "error_details": error
+            }
+        }
+    
+    def get_routing_stats(self) -> Dict[str, Any]:
+        """
+        Get routing statistics for monitoring
+        
+        Returns:
+            Dictionary with routing statistics
+        """
+        try:
+            metrics_stats = self.metrics.get_stats()
+            
+            return {
+                "total_routes": metrics_stats.get("total_classifications", 0),
+                "route_distribution": metrics_stats.get("route_distribution", {}),
+                "backend_shortcuts": metrics_stats.get("backend_shortcuts", 0),
+                "llm_calls": metrics_stats.get("llm_calls", 0),
+                "average_confidence": metrics_stats.get("average_confidence", 0.0),
+                "cache_enabled": config.cache_enabled
+            }
+        except Exception as e:
+            logger.error(f"Error getting routing stats: {e}")
+            return {"error": "Failed to retrieve stats"}
+
+this is src/ai_engine/utils/cache.py
+"""
+Cache Manager Module
+Handles caching of AI responses with TTL and memory management
+"""
+
+import hashlib
+from typing import Any, Optional, Dict
+from datetime import datetime, timedelta
+from threading import Lock
+from collections import OrderedDict
+import logging
+
+from ..core.config import config
+
+logger = logging.getLogger(__name__)
+
+
+class CacheManager:
+    """
+    Thread-safe in-memory cache with TTL and LRU eviction
+    Production note: Backend team should replace with Redis for distributed caching
+    """
+    
+    def __init__(self, max_size: Optional[int] = None):
+        """
+        Initialize cache manager
+        
+        Args:
+            max_size: Maximum number of cache entries (defaults to config value)
+        """
+        self._cache: OrderedDict[str, Dict] = OrderedDict()
+        self._expiry: Dict[str, datetime] = {}
+        self._lock = Lock()
+        self.max_size = max_size or config.cache_max_size
+        
+        # Statistics
+        self._hits = 0
+        self._misses = 0
+        self._evictions = 0
+        
+        logger.info(f"CacheManager initialized with max_size={self.max_size}")
+    
+    def get(self, key: str) -> Optional[Any]:
+        """
+        Get cached value if not expired (thread-safe)
+        
+        Args:
+            key: Cache key
+            
+        Returns:
+            Cached value or None if not found/expired
+        """
+        with self._lock:
+            if key not in self._cache:
+                self._misses += 1
+                logger.debug(f"Cache miss: {key[:20]}...")
+                return None
+            
+            # Check expiry
+            if key in self._expiry and datetime.utcnow() >= self._expiry[key]:
+                logger.debug(f"Cache expired: {key[:20]}...")
+                self._remove(key)
+                self._misses += 1
+                return None
+            
+            # Move to end (LRU: most recently used)
+            self._cache.move_to_end(key)
+            
+            self._hits += 1
+            logger.debug(f"Cache hit: {key[:20]}...")
+            return self._cache[key]
+    
+    def set(self, key: str, value: Any, ttl_minutes: int = 60):
+        """
+        Set cached value with TTL (thread-safe)
+        
+        Args:
+            key: Cache key
+            value: Value to cache
+            ttl_minutes: Time to live in minutes
+        """
+        with self._lock:
+            # Evict oldest entry if at capacity
+            if len(self._cache) >= self.max_size and key not in self._cache:
+                self._evict_oldest()
+            
+            # Store value and expiry
+            self._cache[key] = value
+            self._expiry[key] = datetime.utcnow() + timedelta(minutes=ttl_minutes)
+            
+            # Move to end (most recently used)
+            self._cache.move_to_end(key)
+            
+            logger.debug(f"Cached: {key[:20]}... (TTL: {ttl_minutes}m)")
+    
+    def clear(self, key: Optional[str] = None):
+        """
+        Clear specific key or entire cache (thread-safe)
+        
+        Args:
+            key: Specific key to clear, or None to clear all
+        """
+        with self._lock:
+            if key:
+                self._remove(key)
+                logger.debug(f"Cleared cache key: {key[:20]}...")
+            else:
+                count = len(self._cache)
+                self._cache.clear()
+                self._expiry.clear()
+                logger.info(f"Cleared entire cache ({count} entries)")
+    
+    def _remove(self, key: str):
+        """
+        Remove key from cache and expiry (must be called within lock)
+        
+        Args:
+            key: Cache key to remove
+        """
+        self._cache.pop(key, None)
+        self._expiry.pop(key, None)
+    
+    def _evict_oldest(self):
+        """
+        Evict the least recently used entry (must be called within lock)
+        """
+        if self._cache:
+            # OrderedDict maintains insertion order
+            # Oldest is first item (FIFO with move_to_end = LRU)
+            oldest_key = next(iter(self._cache))
+            self._remove(oldest_key)
+            self._evictions += 1
+            logger.debug(f"Evicted oldest entry: {oldest_key[:20]}...")
+    
+    def cleanup_expired(self):
+        """
+        Proactively remove expired entries (thread-safe)
+        Call this periodically in production (e.g., every 5 minutes)
+        """
+        with self._lock:
+            now = datetime.utcnow()
+            expired_keys = [
+                key for key, expiry_time in self._expiry.items()
+                if now >= expiry_time
+            ]
+            
+            for key in expired_keys:
+                self._remove(key)
+            
+            if expired_keys:
+                logger.info(f"Cleaned up {len(expired_keys)} expired entries")
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """
+        Get cache statistics (thread-safe)
+        
+        Returns:
+            Dictionary with cache statistics
+        """
+        with self._lock:
+            total_requests = self._hits + self._misses
+            hit_rate = (self._hits / total_requests) if total_requests > 0 else 0.0
+            
+            return {
+                "size": len(self._cache),
+                "max_size": self.max_size,
+                "utilization": len(self._cache) / self.max_size if self.max_size > 0 else 0.0,
+                "hits": self._hits,
+                "misses": self._misses,
+                "hit_rate": round(hit_rate, 3),
+                "evictions": self._evictions,
+                "enabled": config.cache_enabled
+            }
+    
+    def reset_stats(self):
+        """Reset cache statistics (thread-safe)"""
+        with self._lock:
+            self._hits = 0
+            self._misses = 0
+            self._evictions = 0
+            logger.info("Cache statistics reset")
+
+
+def generate_cache_key(prefix: str, content: str, max_length: int = 200) -> str:
+    """
+    Generate a deterministic cache key using MD5 hash
+    
+    Args:
+        prefix: Key prefix (e.g., "comment", "email", "route")
+        content: Content to hash
+        max_length: Maximum content length to consider
+        
+    Returns:
+        Cache key string
+    """
+    # Normalize content
+    normalized = content.lower().strip()[:max_length]
+    
+    # Create hash
+    content_hash = hashlib.md5(f"{prefix}:{normalized}".encode('utf-8')).hexdigest()[:16]
+    
+    return f"{prefix}:{content_hash}"
+
+    this is src/ai_engine/utils/metrics.py
+    """
+Metrics Collector Module
+Tracks AI performance, costs, and usage statistics
+"""
+
+from typing import Dict, Any, List, Optional
+from collections import defaultdict
+from datetime import datetime, timedelta
+from threading import Lock
+import logging
+
+from ..core.config import config
+
+logger = logging.getLogger(__name__)
+
+
+class MetricsCollector:
+    """
+    Thread-safe metrics collection with memory limits and cost tracking
+    """
+    
+    def __init__(self, max_records: Optional[int] = None):
+        """
+        Initialize metrics collector
+        
+        Args:
+            max_records: Maximum records to keep in memory (defaults to config)
+        """
+        self.metrics: Dict[str, List[Dict]] = defaultdict(list)
+        self.max_records = max_records or config.metrics_max_records
+        self._lock = Lock()
+        
+        logger.info(f"MetricsCollector initialized with max_records={self.max_records}")
+    
+    def record_classification(self, route_type: str, confidence: float, user_id: str):
+        """
+        Record classification metrics (thread-safe)
+        
+        Args:
+            route_type: Type of route classified
+            confidence: Classification confidence score
+            user_id: User who made the request
+        """
+        with self._lock:
+            self.metrics["classifications"].append({
+                "route_type": route_type,
+                "confidence": confidence,
+                "user_id": user_id,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            # Enforce memory limit
+            if len(self.metrics["classifications"]) > self.max_records:
+                self.metrics["classifications"] = self.metrics["classifications"][-self.max_records:]
+            
+            logger.debug(f"Classified: {route_type} (confidence: {confidence:.2f})")
+    
+    def record_api_call(
+        self, 
+        model: str, 
+        tokens_used: int, 
+        success: bool,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0
+    ):
+        """
+        Record OpenAI API call with cost calculation (thread-safe)
+        
+        Args:
+            model: Model used (e.g., "gpt-4o")
+            tokens_used: Total tokens consumed
+            success: Whether call succeeded
+            prompt_tokens: Input tokens
+            completion_tokens: Output tokens
+        """
+        with self._lock:
+            # Calculate cost
+            cost_usd = self._calculate_cost(model, prompt_tokens, completion_tokens)
+            
+            self.metrics["api_calls"].append({
+                "model": model,
+                "tokens_used": tokens_used,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "cost_usd": cost_usd,
+                "success": success,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            # Enforce memory limit
+            if len(self.metrics["api_calls"]) > self.max_records:
+                self.metrics["api_calls"] = self.metrics["api_calls"][-self.max_records:]
+            
+            logger.info(f"API call: {model} - {tokens_used} tokens - ${cost_usd:.4f}")
+    
+    def record_pipeline_execution(
+        self, 
+        route_type: str, 
+        requires_llm: bool, 
+        success: bool, 
+        processing_time: Optional[float],
+        user_id: str
+    ):
+        """
+        Record pipeline execution metrics (thread-safe)
+        
+        Args:
+            route_type: Route that was executed
+            requires_llm: Whether LLM processing was needed
+            success: Whether execution succeeded
+            processing_time: Time taken in seconds (optional)
+            user_id: User who made the request
+        """
+        with self._lock:
+            self.metrics["pipeline_executions"].append({
+                "route_type": route_type,
+                "requires_llm": requires_llm,
+                "success": success,
+                "processing_time": processing_time,
+                "user_id": user_id,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            # Enforce memory limit
+            if len(self.metrics["pipeline_executions"]) > self.max_records:
+                self.metrics["pipeline_executions"] = self.metrics["pipeline_executions"][-self.max_records:]
+            
+            logger.debug(f"Pipeline: {route_type} - LLM:{requires_llm} - Success:{success}")
+    
+    def record_cache_event(self, event_type: str, key_prefix: str, hit: bool = False):
+        """
+        Record cache hit/miss events (thread-safe)
+        
+        Args:
+            event_type: Type of cache event (hit, miss, set)
+            key_prefix: Cache key prefix (e.g., "route", "comment")
+            hit: Whether it was a cache hit
+        """
+        with self._lock:
+            self.metrics["cache_events"].append({
+                "event_type": event_type,
+                "key_prefix": key_prefix,
+                "hit": hit,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            # Enforce memory limit
+            if len(self.metrics["cache_events"]) > self.max_records:
+                self.metrics["cache_events"] = self.metrics["cache_events"][-self.max_records:]
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """
+        Get current metrics statistics (thread-safe)
+        
+        Returns:
+            Dictionary with aggregated statistics
+        """
+        with self._lock:
+            if not self.metrics["classifications"]:
+                return {
+                    "total_classifications": 0,
+                    "total_api_calls": 0,
+                    "total_cost_usd": 0.0
+                }
+            
+            classifications = self.metrics["classifications"]
+            api_calls = self.metrics.get("api_calls", [])
+            
+            # Aggregate classification stats
+            route_counts = defaultdict(int)
+            total_confidence = 0.0
+            
+            for record in classifications:
+                route_counts[record["route_type"]] += 1
+                total_confidence += record["confidence"]
+            
+            # Aggregate API call stats
+            total_cost = sum(call.get("cost_usd", 0.0) for call in api_calls)
+            total_tokens = sum(call.get("tokens_used", 0) for call in api_calls)
+            successful_calls = sum(1 for call in api_calls if call.get("success"))
+            
+            # Calculate backend vs LLM distribution
+            backend_shortcuts = (
+                route_counts.get("backend_completion", 0) + 
+                route_counts.get("backend_productivity", 0)
+            )
+            llm_calls = sum(route_counts.values()) - backend_shortcuts
+            
+            return {
+                "total_classifications": len(classifications),
+                "average_confidence": total_confidence / len(classifications),
+                "route_distribution": dict(route_counts),
+                "backend_shortcuts": backend_shortcuts,
+                "llm_calls": llm_calls,
+                "total_api_calls": len(api_calls),
+                "successful_api_calls": successful_calls,
+                "total_tokens": total_tokens,
+                "total_cost_usd": round(total_cost, 4),
+                "average_cost_per_call": round(total_cost / max(len(api_calls), 1), 4)
+            }
+    
+    def get_daily_cost(self) -> float:
+        """
+        Calculate total cost for today (thread-safe)
+        
+        Returns:
+            Total cost in USD for current day
+        """
+        with self._lock:
+            api_calls = self.metrics.get("api_calls", [])
+            if not api_calls:
+                return 0.0
+            
+            today = datetime.utcnow().date()
+            daily_calls = [
+                call for call in api_calls
+                if datetime.fromisoformat(call["timestamp"]).date() == today
+            ]
+            
+            daily_cost = sum(call.get("cost_usd", 0.0) for call in daily_calls)
+            return round(daily_cost, 4)
+    
+    def get_hourly_stats(self, hours: int = 1) -> Dict[str, Any]:
+        """
+        Get statistics for the last N hours (thread-safe)
+        
+        Args:
+            hours: Number of hours to look back
+            
+        Returns:
+            Statistics for the time period
+        """
+        with self._lock:
+            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+            
+            api_calls = self.metrics.get("api_calls", [])
+            recent_calls = [
+                call for call in api_calls
+                if datetime.fromisoformat(call["timestamp"]) >= cutoff_time
+            ]
+            
+            if not recent_calls:
+                return {
+                    "period_hours": hours,
+                    "api_calls": 0,
+                    "total_tokens": 0,
+                    "total_cost_usd": 0.0
+                }
+            
+            total_tokens = sum(call.get("tokens_used", 0) for call in recent_calls)
+            total_cost = sum(call.get("cost_usd", 0.0) for call in recent_calls)
+            
+            return {
+                "period_hours": hours,
+                "api_calls": len(recent_calls),
+                "total_tokens": total_tokens,
+                "tokens_per_hour": total_tokens // hours if hours > 0 else 0,
+                "total_cost_usd": round(total_cost, 4),
+                "cost_per_hour": round(total_cost / hours, 4) if hours > 0 else 0.0
+            }
+    
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """
+        Get cache performance statistics (thread-safe)
+        
+        Returns:
+            Cache hit rate and related metrics
+        """
+        with self._lock:
+            cache_events = self.metrics.get("cache_events", [])
+            if not cache_events:
+                return {
+                    "total_events": 0,
+                    "hit_rate": 0.0
+                }
+            
+            hits = sum(1 for event in cache_events if event.get("hit"))
+            total = len(cache_events)
+            
+            return {
+                "total_events": total,
+                "cache_hits": hits,
+                "cache_misses": total - hits,
+                "hit_rate": round(hits / total, 3) if total > 0 else 0.0
+            }
+    
+    def _calculate_cost(self, model: str, prompt_tokens: int, completion_tokens: int) -> float:
+        """
+        Calculate cost for API call based on token usage
+        
+        Args:
+            model: Model name
+            prompt_tokens: Input tokens
+            completion_tokens: Output tokens
+            
+        Returns:
+            Cost in USD
+        """
+        cost_config = config.cost_config
+        
+        # Get pricing for model (default to gpt-3.5 if not found)
+        if model in cost_config:
+            pricing = cost_config[model]
+        elif "gpt-4" in model.lower():
+            pricing = cost_config.get("gpt-4o", {"input": 0.0025, "output": 0.01})
+        else:
+            pricing = cost_config.get("gpt-3.5-turbo", {"input": 0.0005, "output": 0.0015})
+        
+        # Calculate cost (pricing is per 1K tokens)
+        input_cost = (prompt_tokens / 1000) * pricing["input"]
+        output_cost = (completion_tokens / 1000) * pricing["output"]
+        
+        return input_cost + output_cost
+    
+    def reset_stats(self):
+        """Reset all metrics (thread-safe)"""
+        with self._lock:
+            self.metrics.clear()
+            logger.info("All metrics reset")
+    
+    def export_metrics(self, metric_type: Optional[str] = None) -> List[Dict]:
+        """
+        Export metrics for external storage/analysis (thread-safe)
+        
+        Args:
+            metric_type: Specific metric type to export, or None for all
+            
+        Returns:
+            List of metric records
+        """
+        with self._lock:
+            if metric_type:
+                return self.metrics.get(metric_type, []).copy()
+            else:
+                return {
+                    key: values.copy() 
+                    for key, values in self.metrics.items()
+                }
+
+
+# Global metrics instance (can be imported by other modules)
+metrics = MetricsCollector()
+
+this is src/ai_engine/models/model_manager.py
+
+"""
+Model Manager Module
+Manages OpenAI API calls and model interactions
+"""
+
+import logging
+from typing import Dict, Any, Optional
+from datetime import datetime
+
+from openai import OpenAI
+import openai
+
+from ..core.config import config
+from ..utils.metrics import MetricsCollector
+
+logger = logging.getLogger(__name__)
+
+
+class ModelManager:
+    """
+    Manages OpenAI API calls with error handling and fallbacks
+    """
+    
+    def __init__(self, metrics: Optional[MetricsCollector] = None):
+        """
+        Initialize model manager
+        
+        Args:
+            metrics: Optional metrics collector instance (for shared metrics)
+        """
+        self.client = OpenAI(api_key=config.openai_api_key)
+        self.metrics = metrics or MetricsCollector()
+        
+        # Model configurations from config
+        self.models = config.model_config_map
+        self.token_limits = config.token_limits
+        
+        logger.info(f"ModelManager initialized with primary model: {self.models['primary']}")
+    
+    def generate_completion(
+        self, 
+        system_prompt: str, 
+        user_message: str,
+        model_type: str = "primary",
+        temperature: float = 0.3,
+        max_tokens: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Generate completion using OpenAI API
+        
+        Args:
+            system_prompt: System instructions
+            user_message: User input to process
+            model_type: Which model to use (primary/fast/classification)
+            temperature: Creativity level (0.0-1.0)
+            max_tokens: Max response length
+        
+        Returns:
+            Dict with response and metadata
+        """
+        try:
+            # Validate inputs
+            if not system_prompt or not user_message:
+                return {
+                    "success": False,
+                    "error": "invalid_input",
+                    "error_message": "System prompt and user message are required"
+                }
+            
+            # Get model configuration
+            model_name = self.models.get(model_type, self.models["primary"])
+            if max_tokens is None:
+                max_tokens = self.token_limits.get(model_name, 1000)
+            
+            # Record API call start time
+            start_time = datetime.utcnow()
+            
+            # Make API call with timeout
+            response = self.client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message}
+                ],
+                temperature=temperature,
+                max_tokens=max_tokens,
+                top_p=0.9,
+                timeout=config.openai_timeout_seconds
+            )
+            
+            # Calculate processing time
+            end_time = datetime.utcnow()
+            processing_time = (end_time - start_time).total_seconds()
+            
+            # Extract response data
+            result = {
+                "success": True,
+                "content": response.choices[0].message.content,
+                "model_used": model_name,
+                "usage": {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens
+                },
+                "metadata": {
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "start_time": start_time.isoformat(),
+                    "end_time": end_time.isoformat(),
+                    "processing_time_seconds": round(processing_time, 3)
+                }
+            }
+            
+            # Record metrics with cost tracking
+            try:
+                self.metrics.record_api_call(
+                    model=model_name,
+                    tokens_used=response.usage.total_tokens,
+                    success=True,
+                    prompt_tokens=response.usage.prompt_tokens,
+                    completion_tokens=response.usage.completion_tokens
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record API metrics: {e}")
+                # Don't fail the request if metrics fail
+            
+            logger.info(
+                f"OpenAI call successful - {model_name} - "
+                f"{response.usage.total_tokens} tokens - "
+                f"{processing_time:.2f}s"
+            )
+            
+            return result
+            
+        except openai.RateLimitError as e:
+            logger.warning(f"Rate limit hit: {str(e)}")
+            return self._handle_rate_limit_error(system_prompt, user_message, model_type)
+            
+        except openai.APIError as e:
+            logger.error(f"OpenAI API error: {str(e)}")
+            
+            # Record failed API call
+            try:
+                self.metrics.record_api_call(
+                    model=self.models.get(model_type, "unknown"),
+                    tokens_used=0,
+                    success=False
+                )
+            except:
+                pass
+            
+            return {
+                "success": False,
+                "error": "api_error",
+                "error_message": str(e),
+                "fallback_available": True
+            }
+        
+        except openai.APITimeoutError as e:
+            logger.error(f"OpenAI API timeout: {str(e)}")
+            
+            try:
+                self.metrics.record_api_call(
+                    model=self.models.get(model_type, "unknown"),
+                    tokens_used=0,
+                    success=False
+                )
+            except:
+                pass
+            
+            return {
+                "success": False,
+                "error": "timeout",
+                "error_message": f"Request timed out after {config.openai_timeout_seconds}s",
+                "fallback_available": True
+            }
+            
+        except (ValueError, TypeError, KeyError) as e:
+            logger.error(f"Invalid input or configuration: {str(e)}")
+            return {
+                "success": False,
+                "error": "invalid_input",
+                "error_message": str(e),
+                "fallback_available": False
+            }
+            
+        except Exception as e:
+            logger.error(f"Unexpected error in OpenAI call: {str(e)}", exc_info=True)
+            return {
+                "success": False,
+                "error": "unexpected_error",
+                "error_message": str(e),
+                "fallback_available": False
+            }
+    
+    def _handle_rate_limit_error(
+        self, 
+        system_prompt: str, 
+        user_message: str, 
+        model_type: str
+    ) -> Dict:
+        """
+        Handle rate limit by trying a different model or queuing
+        
+        Args:
+            system_prompt: System instructions
+            user_message: User input
+            model_type: Originally requested model type
+            
+        Returns:
+            Response dict (either from fallback or error)
+        """
+        if model_type == "primary":
+            # Fallback to faster model
+            logger.info("Rate limit on primary model, trying fast model")
+            
+            # Recursive call with fast model (only retries once)
+            return self.generate_completion(
+                system_prompt=system_prompt,
+                user_message=user_message,
+                model_type="fast",
+                temperature=0.3
+            )
+        
+        # Already tried fallback or using non-primary model
+        logger.error("Rate limit reached on all models")
+        
+        return {
+            "success": False,
+            "error": "rate_limit",
+            "error_message": "All models are rate limited. Please try again in a few minutes.",
+            "retry_after_seconds": 60,
+            "fallback_available": False
+        }
+    
+    def check_daily_cost_limit(self) -> Dict[str, Any]:
+        """
+        Check if daily cost limit has been reached
+        
+        Returns:
+            Dict with cost status and whether limit is reached
+        """
+        try:
+            daily_cost = self.metrics.get_daily_cost()
+            max_cost = config.max_daily_cost_usd
+            alert_threshold = config.alert_at_cost_usd
+            
+            limit_reached = daily_cost >= max_cost
+            alert_needed = daily_cost >= alert_threshold
+            
+            return {
+                "daily_cost": daily_cost,
+                "max_cost": max_cost,
+                "limit_reached": limit_reached,
+                "alert_needed": alert_needed,
+                "percentage_used": round((daily_cost / max_cost) * 100, 1) if max_cost > 0 else 0
+            }
+        except Exception as e:
+            logger.error(f"Error checking cost limit: {e}")
+            return {
+                "daily_cost": 0.0,
+                "limit_reached": False,
+                "error": str(e)
+            }
+    
+    def generate_completion_with_cost_check(
+        self,
+        system_prompt: str,
+        user_message: str,
+        model_type: str = "primary",
+        temperature: float = 0.3,
+        max_tokens: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Generate completion with automatic cost limit checking
+        
+        Args:
+            Same as generate_completion
+            
+        Returns:
+            Response dict (with cost limit check)
+        """
+        # Check cost limit before making API call
+        cost_status = self.check_daily_cost_limit()
+        
+        if cost_status["limit_reached"]:
+            logger.error(
+                f"Daily cost limit reached: ${cost_status['daily_cost']:.2f} / "
+                f"${cost_status['max_cost']:.2f}"
+            )
+            return {
+                "success": False,
+                "error": "cost_limit_reached",
+                "error_message": f"Daily cost limit of ${cost_status['max_cost']:.2f} reached",
+                "current_cost": cost_status["daily_cost"],
+                "fallback_available": False
+            }
+        
+        # Alert if approaching limit
+        if cost_status["alert_needed"]:
+            logger.warning(
+                f"Approaching cost limit: ${cost_status['daily_cost']:.2f} / "
+                f"${cost_status['max_cost']:.2f} ({cost_status['percentage_used']}%)"
+            )
+        
+        # Proceed with normal generation
+        return self.generate_completion(
+            system_prompt=system_prompt,
+            user_message=user_message,
+            model_type=model_type,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+    
+    def get_model_stats(self) -> Dict[str, Any]:
+        """
+        Get model usage statistics
+        
+        Returns:
+            Dict with model usage stats
+        """
+        try:
+            stats = self.metrics.get_stats()
+            return {
+                "total_api_calls": stats.get("total_api_calls", 0),
+                "successful_calls": stats.get("successful_api_calls", 0),
+                "total_tokens": stats.get("total_tokens", 0),
+                "total_cost_usd": stats.get("total_cost_usd", 0.0),
+                "average_cost_per_call": stats.get("average_cost_per_call", 0.0)
+            }
+        except Exception as e:
+            logger.error(f"Error getting model stats: {e}")
+            return {"error": str(e)}
+
+this is src/ai_engine/prompts/system_prompts.py
+"""
+System Prompts Module
+Contains all AI prompt templates with optimized token usage
+"""
+import tiktoken
+
+
+class SystemPrompts:
+    """
+    Centralized prompt templates for different AI tasks
+    Optimized for token efficiency while maintaining quality
+    """
+    
+    # =========================================================================
+    # JIRA COMMENT REPHRASER (Optimized: ~85 tokens, was ~150)
+    # =========================================================================
+    JIRA_COMMENT_REPHRASER = """Convert casual task updates to professional Jira comments.
+
+Rules:
+- Be concise and professional
+- Present tense for completed work, future for pending
+- Keep technical details and meaning
+- Never add info not in original
+- Only mark complete if user says "done/finished/completed"
+
+Examples:
+"fixed button bug, tested staging" → "Resolved button alignment issue. Testing completed on staging environment."
+"working on login" → "Currently investigating login functionality."
+"done with API" → "API endpoint implementation completed."
+
+Convert this update:"""
+
+    # =========================================================================
+    # EMAIL GENERATOR (Optimized: ~110 tokens, was ~200)
+    # =========================================================================
+    EMAIL_GENERATOR = """Write professional business emails based on user requests.
+
+Format: Subject line, greeting, body, closing
+
+Rules:
+- Use placeholders for unknown info: [Manager Name], [Date], [Your Name]
+- Match tone to recipient (formal for managers)
+- Be concise but complete
+- Always include proper subject and closing
+
+Example:
+Request: "sick leave tomorrow"
+Output:
+Subject: Sick Leave Request - [Date]
+
+Dear [Manager Name],
+
+I am unable to work tomorrow due to illness. I will monitor emails and address urgent matters remotely if possible.
+
+Thank you for understanding.
+
+Best regards,
+[Your Name]
+
+Write this email:"""
+
+    # =========================================================================
+    # CLASSIFICATION HELPER (Optimized: ~95 tokens, was ~140)
+    # =========================================================================
+    CLASSIFICATION_HELPER = """You are a Jira assistant intent classifier. Determine what the user wants to do.
+
+Possible intents:
+- task_completion: Mark task done
+- task_update: Update progress
+- productivity_query: Ask about stats
+- email_request: Write an email
+- general_question: Other questions
+- unclear: Ambiguous request
+
+CRITICAL: Return ONLY valid JSON, no markdown, no extra text.
+
+Format:
+{
+  "intent": "task_completion",
+  "confidence": 0.9,
+  "extracted_info": {"task_id": "123"},
+  "user_friendly_response": "I understand you want to mark task 123 as complete."
+}
+
+Classify:"""
+
+    # =========================================================================
+    # HELPER METHOD: Build Context-Aware Prompts
+    # =========================================================================
+    
+    @staticmethod
+    def build_comment_prompt_with_context(
+        user_role: str = None,
+        project_type: str = None,
+        task_type: str = None
+    ) -> str:
+        """
+        Build context-aware comment rephrasing prompt
+        
+        Args:
+            user_role: User's role (e.g., "Senior Engineer")
+            project_type: Type of project (e.g., "Mobile App")
+            task_type: Type of task (e.g., "Bug Fix")
+            
+        Returns:
+            Prompt with added context
+        """
+        base_prompt = SystemPrompts.JIRA_COMMENT_REPHRASER
+        
+        context_parts = []
+        if user_role:
+            context_parts.append(f"User role: {user_role}")
+        if project_type:
+            context_parts.append(f"Project: {project_type}")
+        if task_type:
+            context_parts.append(f"Task type: {task_type}")
+        
+        if context_parts:
+            context = "\nContext: " + ", ".join(context_parts)
+            return base_prompt + context
+        
+        return base_prompt
+    
+    @staticmethod
+    def build_email_prompt_with_context(
+        user_name: str = None,
+        manager_name: str = None,
+        department: str = None
+    ) -> str:
+        """
+        Build context-aware email generation prompt
+        
+        Args:
+            user_name: User's name
+            manager_name: Manager's name
+            department: User's department
+            
+        Returns:
+            Prompt with added context
+        """
+        base_prompt = SystemPrompts.EMAIL_GENERATOR
+        
+        context_parts = []
+        if user_name:
+            context_parts.append(f"From: {user_name}")
+        if manager_name:
+            context_parts.append(f"To: {manager_name}")
+        if department:
+            context_parts.append(f"Department: {department}")
+        
+        if context_parts:
+            context = "\nContext: " + ", ".join(context_parts)
+            return base_prompt + context
+        
+        return base_prompt
+    
+    # =========================================================================
+    # VALIDATION PROMPTS (New: For response validation)
+    # =========================================================================
+    
+    VALIDATE_PROFESSIONAL_TONE = """Rate the professionalism of this text on a scale of 0.0 to 1.0.
+
+Consider:
+- Professional vocabulary
+- Appropriate tone
+- Grammar and spelling
+- Clarity and conciseness
+
+Text: {text}
+
+Return only a number between 0.0 and 1.0."""
+
+    # =========================================================================
+    # METADATA
+    # =========================================================================
+    
+    PROMPT_VERSION = "2.0"
+    LAST_UPDATED = "2025-01-09"
+    
+    @classmethod
+    def get_all_prompts(cls) -> dict:
+        """Get all available prompts"""
+        return {
+            "comment_rephraser": cls.JIRA_COMMENT_REPHRASER,
+            "email_generator": cls.EMAIL_GENERATOR,
+            "classification_helper": cls.CLASSIFICATION_HELPER,
+            "validate_tone": cls.VALIDATE_PROFESSIONAL_TONE
+        }
+    
+    @classmethod
+    def get_prompt_stats(cls) -> dict:
+        """Get statistics about prompt token usage"""
+        
+        try:
+            # Use tiktoken to count tokens (GPT-4 encoding)
+            encoding = tiktoken.encoding_for_model("gpt-4")
+            
+            stats = {}
+            for name, prompt in cls.get_all_prompts().items():
+                token_count = len(encoding.encode(prompt))
+                stats[name] = {
+                    "characters": len(prompt),
+                    "estimated_tokens": token_count
+                }
+            
+            return stats
+        except Exception as e:
+            # If tiktoken not available, use rough estimate
+            return {
+                name: {
+                    "characters": len(prompt),
+                    "estimated_tokens": len(prompt) // 4  # Rough estimate
+                }
+                for name, prompt in cls.get_all_prompts().items()
+            }
+
+this is src/ai_engine/generation/comment_generator.py
+
+"""
+Comment Generator Module
+Generates professional Jira comments from casual user updates
+"""
+
+import hashlib
+import logging
+from typing import Dict, Any, Optional
+
+from ..models.model_manager import ModelManager
+from ..prompts.system_prompts import SystemPrompts
+from ..utils.cache import CacheManager
+from ..core.config import config
+
+logger = logging.getLogger(__name__)
+
+
+class CommentGenerator:
+    """
+    Generates professional Jira comments from casual user updates
+    with caching and quality assessment
+    """
+    
+    def __init__(
+        self, 
+        model_manager: Optional[ModelManager] = None,
+        cache_manager: Optional[CacheManager] = None
+    ):
+        """
+        Initialize comment generator
+        
+        Args:
+            model_manager: Optional model manager instance (for shared metrics)
+            cache_manager: Optional cache manager instance (for shared caching)
+        """
+        self.model_manager = model_manager or ModelManager()
+        self.cache_manager = cache_manager or CacheManager()
+        self.prompts = SystemPrompts()
+        
+        logger.info("CommentGenerator initialized")
+    
+    def generate_professional_comment(
+        self, 
+        user_update: str, 
+        context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Convert casual user update to professional Jira comment
+        
+        Args:
+            user_update: Raw user input
+            context: Additional context (task info, user role, etc.)
+        
+        Returns:
+            Dict with generated comment and metadata
+        """
+        try:
+            # Validate input
+            if not user_update or not user_update.strip():
+                return {
+                    "success": False,
+                    "error": "empty_input",
+                    "error_message": "User update cannot be empty"
+                }
+            
+            # Truncate if too long
+            if len(user_update) > config.max_input_length:
+                logger.warning(f"Input too long ({len(user_update)} chars), truncating")
+                user_update = user_update[:config.max_input_length]
+            
+            # Check cache first
+            cache_key = self._generate_cache_key(user_update)
+            
+            if config.cache_enabled:
+                cached_result = self.cache_manager.get(cache_key)
+                if cached_result:
+                    logger.info("Using cached comment rephrasing")
+                    cached_result['from_cache'] = True
+                    cached_result['cache_timestamp'] = self._get_timestamp()
+                    return cached_result
+            
+            # Build context-aware prompt using SystemPrompts helper
+            system_prompt = self._build_system_prompt(context)
+            user_message = f"User update: {user_update}"
+            
+            # Generate using OpenAI with cost check
+            llm_response = self.model_manager.generate_completion_with_cost_check(
+                system_prompt=system_prompt,
+                user_message=user_message,
+                model_type="primary",  # Use best model for professional tone
+                temperature=0.2  # Low temperature for consistent professional tone
+            )
+            
+            if not llm_response["success"]:
+                return self._handle_generation_error(user_update, llm_response)
+            
+            # Process and validate the response
+            professional_comment = llm_response["content"].strip()
+            
+            # Validate response is not empty
+            if not professional_comment:
+                logger.error("LLM returned empty response")
+                return self._handle_generation_error(
+                    user_update,
+                    {"error": "empty_response", "fallback_available": True}
+                )
+            
+            # Quality checks
+            quality_score = self._assess_comment_quality(professional_comment, user_update)
+            
+            result = {
+                "success": True,
+                "original_update": user_update,
+                "professional_comment": professional_comment,
+                "quality_score": quality_score,
+                "requires_approval": quality_score < config.auto_approval_threshold,
+                "word_count": len(professional_comment.split()),
+                "processing_metadata": {
+                    "model_used": llm_response.get("model_used"),
+                    "tokens_used": llm_response.get("usage", {}).get("total_tokens"),
+                    "temperature": 0.2,
+                    "cached": False,
+                    "processing_time": llm_response.get("metadata", {}).get("processing_time_seconds")
+                },
+                "from_cache": False
+            }
+            
+            # Cache if high quality
+            if config.cache_enabled and quality_score >= config.quality_threshold:
+                try:
+                    self.cache_manager.set(
+                        cache_key, 
+                        result, 
+                        ttl_minutes=config.cache_ttl_comment_minutes
+                    )
+                    logger.debug(f"Cached comment with quality score {quality_score:.2f}")
+                except Exception as e:
+                    logger.warning(f"Failed to cache comment: {e}")
+            
+            logger.info(f"Generated professional comment (quality: {quality_score:.2f})")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error generating professional comment: {str(e)}", exc_info=True)
+            return self._create_fallback_response(user_update, str(e))
+    
+    def _build_system_prompt(self, context: Optional[Dict[str, Any]]) -> str:
+        """
+        Build context-aware system prompt using SystemPrompts helper
+        
+        Args:
+            context: User context (role, project, task type)
+            
+        Returns:
+            System prompt with optional context
+        """
+        if not context:
+            return self.prompts.JIRA_COMMENT_REPHRASER
+        
+        # Use SystemPrompts helper method for context-aware prompts
+        return SystemPrompts.build_comment_prompt_with_context(
+            user_role=context.get("user_role"),
+            project_type=context.get("project_type"),
+            task_type=context.get("task_info", {}).get("type")
+        )
+    
+    def _generate_cache_key(self, user_update: str) -> str:
+        """
+        Generate deterministic cache key for user update
+        
+        Args:
+            user_update: User's message
+            
+        Returns:
+            Cache key string
+        """
+        # Normalize input
+        normalized = user_update.lower().strip()[:200]
+        
+        # Use MD5 for deterministic hashing
+        content_hash = hashlib.md5(normalized.encode('utf-8')).hexdigest()[:16]
+        
+        return f"comment:{content_hash}"
+    
+    def _assess_comment_quality(self, generated_comment: str, original_update: str) -> float:
+        """
+        Assess quality of generated comment using heuristics
+        Returns score between 0.0 and 1.0
+        
+        Args:
+            generated_comment: AI-generated comment
+            original_update: Original user input
+            
+        Returns:
+            Quality score (0.0 to 1.0)
+        """
+        score = 1.0
+        
+        # Length checks
+        word_count = len(generated_comment.split())
+        if word_count < 3:
+            score -= 0.4  # Too short
+        elif word_count > 100:
+            score -= 0.2  # Too long
+        
+        # Professional tone indicators
+        professional_words = [
+            'completed', 'implemented', 'resolved', 'pending', 
+            'reviewing', 'investigating', 'deployment', 'testing'
+        ]
+        casual_words = [
+            'done', 'finished', 'gonna', 'wanna', 'kinda', 
+            'yeah', 'nope', 'cool', 'awesome'
+        ]
+        
+        comment_lower = generated_comment.lower()
+        
+        prof_count = sum(1 for word in professional_words if word in comment_lower)
+        casual_count = sum(1 for word in casual_words if word in comment_lower)
+        
+        if prof_count > casual_count:
+            score += 0.1  # Bonus for professional tone
+        elif casual_count > prof_count:
+            score -= 0.3  # Penalty for casual tone
+        
+        # Check if it preserves key information
+        # Extract technical keywords from original
+        original_words = set(original_update.lower().split())
+        generated_words = set(generated_comment.lower().split())
+        
+        # Technical terms that should be preserved
+        technical_terms = {
+            'api', 'bug', 'feature', 'database', 'frontend', 
+            'backend', 'staging', 'production', 'test', 'deployment'
+        }
+        
+        original_tech = original_words.intersection(technical_terms)
+        preserved_tech = original_tech.intersection(generated_words)
+        
+        if original_tech and len(preserved_tech) / len(original_tech) < 0.5:
+            score -= 0.2  # Lost important technical terms
+        
+        # Ensure score is between 0.0 and 1.0
+        return max(0.0, min(1.0, score))
+    
+    def _handle_generation_error(self, user_update: str, llm_response: Dict) -> Dict:
+        """
+        Handle LLM generation errors with fallbacks
+        
+        Args:
+            user_update: Original user input
+            llm_response: Failed LLM response
+            
+        Returns:
+            Fallback response dict
+        """
+        if llm_response.get("fallback_available"):
+            # Try simple rephrasing rules
+            simple_rephrase = self._simple_rephrase_fallback(user_update)
+            
+            logger.info("Using simple rephrase fallback")
+            
+            return {
+                "success": True,
+                "original_update": user_update,
+                "professional_comment": simple_rephrase,
+                "quality_score": 0.6,
+                "requires_approval": True,  # Always require approval for fallbacks
+                "fallback_used": True,
+                "error_reason": llm_response.get("error", "unknown"),
+                "word_count": len(simple_rephrase.split()),
+                "processing_metadata": {
+                    "fallback_type": "simple_rephrase"
+                }
+            }
+        
+        return self._create_fallback_response(
+            user_update, 
+            llm_response.get("error_message", "Generation failed")
+        )
+    
+    def _simple_rephrase_fallback(self, user_update: str) -> str:
+        """
+        Simple rule-based rephrasing as fallback when LLM fails
+        
+        Args:
+            user_update: Original user input
+            
+        Returns:
+            Basic cleaned-up version of input
+        """
+        # Basic cleanup
+        cleaned = user_update.strip()
+        
+        # Capitalize first letter
+        if cleaned:
+            cleaned = cleaned[0].upper() + cleaned[1:]
+        
+        # Add period if missing
+        if cleaned and cleaned[-1] not in '.!?':
+            cleaned += '.'
+        
+        # Simple replacements for common contractions
+        replacements = {
+            " i ": " I ",
+            " im ": " I'm ",
+            " ive ": " I've ",
+            " dont ": " don't ",
+            " cant ": " can't ",
+            " wont ": " won't ",
+            " didnt ": " didn't "
+        }
+        
+        for old, new in replacements.items():
+            cleaned = cleaned.replace(old, new)
+        
+        return f"Update: {cleaned}"
+    
+    def _create_fallback_response(self, user_update: str, error_msg: str) -> Dict:
+        """
+        Create fallback response when everything fails
+        
+        Args:
+            user_update: Original user input
+            error_msg: Error message
+            
+        Returns:
+            Error response dict
+        """
+        return {
+            "success": False,
+            "original_update": user_update,
+            "error": "generation_failed",
+            "error_message": error_msg,
+            "suggested_action": "manual_review",
+            "fallback_comment": f"Task update: {user_update}"
+        }
+    
+    def _get_timestamp(self) -> str:
+        """Get current UTC timestamp"""
+        from datetime import datetime
+        return datetime.utcnow().isoformat()
+
+this is src/ai_engine/generation/email_generator.py
+
+"""
+Email Generator Module
+Generates professional emails based on user requests
+"""
+
+import hashlib
+import re
+import logging
+from typing import Dict, Any, Optional
+
+from ..models.model_manager import ModelManager
+from ..prompts.system_prompts import SystemPrompts
+from ..utils.cache import CacheManager
+from ..core.config import config
+
+logger = logging.getLogger(__name__)
+
+
+class EmailGenerator:
+    """
+    Generates professional emails based on user requests
+    with caching and security validation
+    """
+    
+    def __init__(
+        self, 
+        model_manager: Optional[ModelManager] = None,
+        cache_manager: Optional[CacheManager] = None
+    ):
+        """
+        Initialize email generator
+        
+        Args:
+            model_manager: Optional model manager instance (for shared metrics)
+            cache_manager: Optional cache manager instance (for shared caching)
+        """
+        self.model_manager = model_manager or ModelManager()
+        self.cache_manager = cache_manager or CacheManager()
+        self.prompts = SystemPrompts()
+        
+        logger.info("EmailGenerator initialized")
+    
+    def generate_email(
+        self, 
+        email_request: str, 
+        user_context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Generate professional email based on user request
+        
+        Args:
+            email_request: User's email request
+            user_context: User info (name, manager, etc.)
+        
+        Returns:
+            Dict with generated email and metadata
+        """
+        try:
+            # Validate input
+            if not email_request or not email_request.strip():
+                return {
+                    "success": False,
+                    "error": "empty_input",
+                    "error_message": "Email request cannot be empty"
+                }
+            
+            # Truncate if too long
+            if len(email_request) > config.max_input_length:
+                logger.warning(f"Email request too long ({len(email_request)} chars), truncating")
+                email_request = email_request[:config.max_input_length]
+            
+            # Sanitize user context to prevent prompt injection
+            if user_context:
+                user_context = self._sanitize_user_context(user_context)
+            
+            # Check cache first
+            cache_key = self._generate_cache_key(email_request, user_context)
+            
+            if config.cache_enabled:
+                cached_result = self.cache_manager.get(cache_key)
+                if cached_result:
+                    logger.info("Using cached email generation")
+                    cached_result['from_cache'] = True
+                    cached_result['cache_timestamp'] = self._get_timestamp()
+                    return cached_result
+            
+            # Build context-aware prompt using SystemPrompts helper
+            system_prompt = self._build_system_prompt(user_context)
+            user_message = f"Email request: {email_request}"
+            
+            # Generate using OpenAI with cost check
+            llm_response = self.model_manager.generate_completion_with_cost_check(
+                system_prompt=system_prompt,
+                user_message=user_message,
+                model_type="primary",  # Use best model for professional emails
+                temperature=0.3  # Slightly higher than comments for natural tone
+            )
+            
+            if not llm_response["success"]:
+                return {
+                    "success": False,
+                    "error": llm_response.get("error", "generation_failed"),
+                    "error_message": llm_response.get("error_message", "Failed to generate email"),
+                    "email_request": email_request
+                }
+            
+            # Process the email
+            generated_email = llm_response["content"].strip()
+            
+            # Validate email is not empty
+            if not generated_email:
+                logger.error("LLM returned empty email")
+                return {
+                    "success": False,
+                    "error": "empty_response",
+                    "error_message": "Generated email is empty",
+                    "email_request": email_request
+                }
+            
+            # Extract email components
+            email_parts = self._parse_email_components(generated_email)
+            
+            # Validate email structure
+            validation_result = self._validate_email_structure(email_parts)
+            
+            result = {
+                "success": True,
+                "email_request": email_request,
+                "generated_email": generated_email,
+                "email_components": email_parts,
+                "requires_approval": True,  # Always require approval for emails
+                "validation": validation_result,
+                "word_count": len(generated_email.split()),
+                "processing_metadata": {
+                    "model_used": llm_response.get("model_used"),
+                    "tokens_used": llm_response.get("usage", {}).get("total_tokens"),
+                    "temperature": 0.3,
+                    "cached": False,
+                    "processing_time": llm_response.get("metadata", {}).get("processing_time_seconds")
+                },
+                "from_cache": False
+            }
+            
+            # Cache if validation passed
+            if config.cache_enabled and validation_result.get("valid", False):
+                try:
+                    self.cache_manager.set(
+                        cache_key, 
+                        result, 
+                        ttl_minutes=config.cache_ttl_email_minutes
+                    )
+                    logger.debug("Cached generated email")
+                except Exception as e:
+                    logger.warning(f"Failed to cache email: {e}")
+            
+            logger.info("Generated professional email successfully")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error generating email: {str(e)}", exc_info=True)
+            return {
+                "success": False,
+                "error": "generation_failed",
+                "error_message": str(e),
+                "email_request": email_request
+            }
+    
+    def _build_system_prompt(self, user_context: Optional[Dict[str, Any]]) -> str:
+        """
+        Build context-aware email prompt using SystemPrompts helper
+        
+        Args:
+            user_context: User context (name, manager, department)
+            
+        Returns:
+            System prompt with optional context
+        """
+        if not user_context:
+            return self.prompts.EMAIL_GENERATOR
+        
+        # Use SystemPrompts helper method for context-aware prompts
+        return SystemPrompts.build_email_prompt_with_context(
+            user_name=user_context.get("user_name"),
+            manager_name=user_context.get("manager_name"),
+            department=user_context.get("department")
+        )
+    
+    def _sanitize_user_context(self, user_context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Sanitize user context to prevent prompt injection
+        
+        Args:
+            user_context: Raw user context
+            
+        Returns:
+            Sanitized user context
+        """
+        sanitized = {}
+        
+        # Define safe fields and their max lengths
+        safe_fields = {
+            "user_name": 100,
+            "manager_name": 100,
+            "department": 100,
+            "user_id": 50,
+            "role": 50
+        }
+        
+        for field, max_length in safe_fields.items():
+            if field in user_context:
+                value = str(user_context[field])
+                
+                # Remove potentially dangerous characters
+                value = re.sub(r'[<>{}[\]\\]', '', value)
+                
+                # Remove newlines and control characters
+                value = re.sub(r'[\n\r\t]', ' ', value)
+                
+                # Truncate to max length
+                value = value[:max_length]
+                
+                # Only include if not empty after sanitization
+                if value.strip():
+                    sanitized[field] = value.strip()
+        
+        # Copy non-string fields as-is (user_id, etc.)
+        for key, value in user_context.items():
+            if key not in safe_fields and not isinstance(value, str):
+                sanitized[key] = value
+        
+        return sanitized
+    
+    def _generate_cache_key(
+        self, 
+        email_request: str, 
+        user_context: Optional[Dict[str, Any]]
+    ) -> str:
+        """
+        Generate deterministic cache key for email request
+        
+        Args:
+            email_request: Email request text
+            user_context: User context (affects prompt)
+            
+        Returns:
+            Cache key string
+        """
+        # Normalize request
+        normalized = email_request.lower().strip()[:200]
+        
+        # Include relevant context in key (names affect email generation)
+        context_key = ""
+        if user_context:
+            names = [
+                user_context.get("user_name", ""),
+                user_context.get("manager_name", "")
+            ]
+            context_key = ":".join(filter(None, names))
+        
+        # Create hash of request + context
+        content = f"{normalized}:{context_key}"
+        content_hash = hashlib.md5(content.encode('utf-8')).hexdigest()[:16]
+        
+        return f"email:{content_hash}"
+    
+    def _parse_email_components(self, email: str) -> Dict[str, str]:
+        """
+        Parse email into components (subject, body, etc.)
+        
+        Args:
+            email: Full email text
+            
+        Returns:
+            Dictionary with parsed components
+        """
+        components = {
+            "subject": None,
+            "greeting": None,
+            "closing": None,
+            "full_email": email
+        }
+        
+        lines = email.split('\n')
+        
+        # Extract subject line
+        for line in lines:
+            if line.strip().lower().startswith('subject:'):
+                components['subject'] = line.replace('Subject:', '').replace('subject:', '').strip()
+                break
+        
+        # Extract greeting
+        greeting_patterns = ['dear', 'hello', 'hi', 'good morning', 'good afternoon']
+        for line in lines:
+            line_lower = line.lower()
+            if any(greeting in line_lower for greeting in greeting_patterns):
+                components['greeting'] = line.strip()
+                break
+        
+        # Extract closing
+        closing_patterns = ['regards', 'sincerely', 'best', 'thank you', 'thanks']
+        for line in reversed(lines):
+            line_lower = line.lower()
+            if any(closing in line_lower for closing in closing_patterns):
+                components['closing'] = line.strip()
+                break
+        
+        return components
+    
+    def _validate_email_structure(self, email_parts: Dict[str, str]) -> Dict[str, Any]:
+        """
+        Validate email has proper structure
+        
+        Args:
+            email_parts: Parsed email components
+            
+        Returns:
+            Validation result dict
+        """
+        issues = []
+        warnings = []
+        
+        # Check for subject line
+        if not email_parts.get("subject"):
+            issues.append("Missing subject line")
+        
+        # Check for greeting
+        if not email_parts.get("greeting"):
+            warnings.append("No greeting found")
+        
+        # Check for closing
+        if not email_parts.get("closing"):
+            warnings.append("No closing found")
+        
+        # Check email length
+        email_text = email_parts.get("full_email", "")
+        word_count = len(email_text.split())
+        
+        if word_count < 10:
+            issues.append("Email too short (less than 10 words)")
+        elif word_count > 500:
+            warnings.append("Email very long (over 500 words)")
+        
+        # Check for placeholders
+        if "[" in email_text and "]" in email_text:
+            # This is expected - email should have placeholders
+            pass
+        
+        return {
+            "valid": len(issues) == 0,
+            "issues": issues,
+            "warnings": warnings,
+            "has_subject": bool(email_parts.get("subject")),
+            "has_greeting": bool(email_parts.get("greeting")),
+            "has_closing": bool(email_parts.get("closing")),
+            "word_count": word_count
+        }
+    
+    def _get_timestamp(self) -> str:
+        """Get current UTC timestamp"""
+        from datetime import datetime
+        return datetime.utcnow().isoformat()
+
+this is src/ai_engine/core/pipeline.py
+"""
+AI Processing Pipeline Module
+Orchestrates the complete AI workflow from routing to response generation
+"""
+
+import logging
+from typing import Dict, Any, Optional
+from datetime import datetime
+
+from .router import TaskRouter
+from ..generation.comment_generator import CommentGenerator
+from ..generation.email_generator import EmailGenerator
+from ..generation.response_validator import ResponseValidator
+from ..models.model_manager import ModelManager
+from ..utils.metrics import MetricsCollector
+from ..utils.cache import CacheManager
+from ..core.config import config
+
+logger = logging.getLogger(__name__)
+
+
+class AIProcessingPipeline:
+    """
+    Main AI pipeline that orchestrates the entire AI processing flow
+    Routes requests and handles LLM processing with shared dependencies
+    """
+    
+    def __init__(self):
+        """
+        Initialize pipeline with shared dependencies
+        Creates single instances of metrics, cache, and model manager
+        """
+        # Create shared instances (CRITICAL: fixes isolation bug)
+        self.metrics = MetricsCollector()
+        self.cache_manager = CacheManager()
+        self.model_manager = ModelManager(metrics=self.metrics)
+        
+        # Initialize components with shared dependencies
+        self.router = TaskRouter(
+            cache_manager=self.cache_manager,
+            metrics=self.metrics
+        )
+        
+        self.comment_generator = CommentGenerator(
+            model_manager=self.model_manager,
+            cache_manager=self.cache_manager
+        )
+        
+        self.email_generator = EmailGenerator(
+            model_manager=self.model_manager,
+            cache_manager=self.cache_manager
+        )
+        
+        self.response_validator = ResponseValidator()
+        
+        logger.info("AI Processing Pipeline initialized with shared dependencies")
+    
+    def process_user_request(
+        self, 
+        user_input: str, 
+        user_context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Main processing method - handles complete AI workflow
+        
+        Args:
+            user_input: Raw user message
+            user_context: User information and context
+            
+        Returns:
+            Complete processing result for backend to handle
+        """
+        start_time = datetime.utcnow()
+        
+        try:
+            # Validate inputs
+            if not user_input or not user_input.strip():
+                return self._create_error_response(
+                    "empty_input",
+                    "Please provide a message",
+                    user_input,
+                    user_context
+                )
+            
+            if not user_context:
+                user_context = {}
+                logger.warning("No user context provided, using empty dict")
+            
+            # Step 1: Route the request
+            routing_result = self.router.route_request(user_input, user_context)
+            
+            logger.info(f"Request routed to: {routing_result['route_type']}")
+            
+            # Step 2: Process based on route type
+            if not routing_result["requires_llm"]:
+                # Backend shortcut - no AI processing needed
+                return self._create_backend_response(routing_result)
+            
+            # Step 3: LLM Processing required
+            processing_result = self._handle_llm_processing(routing_result)
+            
+            # Step 4: Validate response quality (if content was generated)
+            if processing_result.get("success") and "generated_content" in processing_result:
+                validation_result = self.response_validator.validate_response(
+                    processing_result["generated_content"],
+                    routing_result["route_type"]
+                )
+                processing_result["validation"] = validation_result
+                
+                # Override approval based on validation
+                if not validation_result.get("approved_for_auto_send", False):
+                    processing_result["requires_user_approval"] = True
+                    if validation_result.get("flags"):
+                        processing_result["approval_reason"] = validation_result["flags"]
+            
+            # Step 5: Calculate total processing time
+            end_time = datetime.utcnow()
+            processing_time = (end_time - start_time).total_seconds()
+            
+            # Step 6: Record pipeline metrics
+            try:
+                self._record_pipeline_metrics(
+                    routing_result, 
+                    processing_result,
+                    processing_time
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record pipeline metrics: {e}")
+            
+            # Add final metadata
+            processing_result["pipeline_metadata"] = {
+                "total_processing_time": round(processing_time, 3),
+                "start_time": start_time.isoformat(),
+                "end_time": end_time.isoformat(),
+                "pipeline_version": "2.0"
+            }
+            
+            return processing_result
+            
+        except Exception as e:
+            logger.error(f"Pipeline processing error: {str(e)}", exc_info=True)
+            return self._create_error_response(
+                "pipeline_error",
+                str(e),
+                user_input,
+                user_context
+            )
+    
+    def _handle_llm_processing(self, routing_result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle different types of LLM processing
+        
+        Args:
+            routing_result: Routing decision from router
+            
+        Returns:
+            Processing result dict
+        """
+        route_type = routing_result["route_type"]
+        user_input = routing_result["user_input"]
+        user_context = routing_result["user_context"]
+        
+        try:
+            if route_type == "llm_rephrasing":
+                return self._process_comment_generation(user_input, user_context, routing_result)
+                
+            elif route_type == "llm_email":
+                return self._process_email_generation(user_input, user_context, routing_result)
+                
+            elif route_type == "llm_classification":
+                return self._process_classification_fallback(user_input, user_context, routing_result)
+                
+            else:
+                return {
+                    "success": False,
+                    "error": "unknown_llm_route",
+                    "route_type": route_type,
+                    "backend_action": "show_error_message"
+                }
+                
+        except Exception as e:
+            logger.error(f"LLM processing error for {route_type}: {str(e)}", exc_info=True)
+            return {
+                "success": False,
+                "error": "llm_processing_failed",
+                "error_message": str(e),
+                "route_type": route_type,
+                "backend_action": "show_error_message"
+            }
+    
+    def _process_comment_generation(
+        self, 
+        user_input: str, 
+        user_context: Dict[str, Any],
+        routing_result: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Process professional comment generation
+        
+        Args:
+            user_input: User's message
+            user_context: User context
+            routing_result: Routing decision
+            
+        Returns:
+            Processing result for backend
+        """
+        # Extract additional context from routing
+        extracted_entities = routing_result.get("classification_details", {}).get("extracted_entities", {})
+        
+        # Build context for comment generator
+        comment_context = {
+            "user_role": user_context.get("role"),
+            "project_type": user_context.get("current_project_type"),
+            "task_info": extracted_entities
+        }
+        
+        # Generate professional comment
+        generation_result = self.comment_generator.generate_professional_comment(
+            user_input, 
+            comment_context
+        )
+        
+        if not generation_result["success"]:
+            return generation_result
+        
+        # Format response for backend
+        return {
+            "success": True,
+            "processing_type": "comment_generation",
+            "route_type": "llm_rephrasing",
+            "original_input": user_input,
+            "generated_content": generation_result["professional_comment"],
+            "requires_user_approval": generation_result.get("requires_approval", True),
+            "quality_score": generation_result.get("quality_score", 0.0),
+            "processing_metadata": {
+                "word_count": generation_result.get("word_count", 0),
+                "model_used": generation_result.get("processing_metadata", {}).get("model_used"),
+                "tokens_used": generation_result.get("processing_metadata", {}).get("tokens_used"),
+                "fallback_used": generation_result.get("fallback_used", False),
+                "from_cache": generation_result.get("from_cache", False)
+            },
+            "backend_action": "show_comment_for_approval"
+        }
+    
+    def _process_email_generation(
+        self, 
+        user_input: str, 
+        user_context: Dict[str, Any],
+        routing_result: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Process email generation
+        
+        Args:
+            user_input: User's message
+            user_context: User context
+            routing_result: Routing decision
+            
+        Returns:
+            Processing result for backend
+        """
+        # Generate email
+        generation_result = self.email_generator.generate_email(user_input, user_context)
+        
+        if not generation_result["success"]:
+            return generation_result
+        
+        # Format response for backend
+        return {
+            "success": True,
+            "processing_type": "email_generation", 
+            "route_type": "llm_email",
+            "original_input": user_input,
+            "generated_content": generation_result["generated_email"],
+            "email_components": generation_result.get("email_components", {}),
+            "requires_user_approval": True,  # Always require approval for emails
+            "validation": generation_result.get("validation", {}),
+            "processing_metadata": {
+                **generation_result.get("processing_metadata", {}),
+                "from_cache": generation_result.get("from_cache", False)
+            },
+            "backend_action": "show_email_for_approval"
+        }
+    
+    def _process_classification_fallback(
+        self, 
+        user_input: str, 
+        user_context: Dict[str, Any],
+        routing_result: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Handle ambiguous cases that need LLM classification
+        
+        Args:
+            user_input: User's message
+            user_context: User context
+            routing_result: Routing decision
+            
+        Returns:
+            Processing result for backend
+        """
+        # Use classification prompt to understand user intent
+        from ..prompts.system_prompts import SystemPrompts
+        
+        classification_result = self.model_manager.generate_completion_with_cost_check(
+            system_prompt=SystemPrompts.CLASSIFICATION_HELPER,
+            user_message=user_input,
+            model_type="classification",  # Use faster model for classification
+            temperature=0.1
+        )
+        
+        if not classification_result["success"]:
+            return {
+                "success": False,
+                "error": "classification_failed",
+                "original_input": user_input,
+                "backend_action": "request_clarification"
+            }
+        
+        # Parse classification result
+        classification_text = classification_result["content"]
+        
+        # Try to extract JSON (LLM might wrap in markdown)
+        import json
+        import re
+        
+        try:
+            # Try direct JSON parse
+            parsed = json.loads(classification_text)
+        except json.JSONDecodeError:
+            # Try to extract JSON from markdown
+            json_match = re.search(r'```json\s*(\{.*?\})\s*```', classification_text, re.DOTALL)
+            if json_match:
+                try:
+                    parsed = json.loads(json_match.group(1))
+                except:
+                    parsed = {"intent": "unclear", "confidence": 0.5}
+            else:
+                parsed = {"intent": "unclear", "confidence": 0.5}
+        
+        # Format response
+        return {
+            "success": True,
+            "processing_type": "classification_help",
+            "route_type": "llm_classification", 
+            "original_input": user_input,
+            "classification_result": parsed,
+            "generated_content": parsed.get("user_friendly_response", "I'm not sure what you want to do. Could you please clarify?"),
+            "requires_user_approval": False,
+            "backend_action": "show_clarification_request",
+            "processing_metadata": classification_result.get("usage", {})
+        }
+    
+    def _create_backend_response(self, routing_result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create response for backend shortcuts (no LLM needed)
+        
+        Args:
+            routing_result: Routing decision
+            
+        Returns:
+            Backend response dict
+        """
+        route_type = routing_result["route_type"]
+        
+        if route_type == "backend_completion":
+            return {
+                "success": True,
+                "processing_type": "backend_shortcut",
+                "route_type": route_type,
+                "original_input": routing_result["user_input"],
+                "requires_llm": False,
+                "backend_action": "mark_task_complete",
+                "extracted_entities": routing_result.get("classification_details", {}).get("extracted_entities", {}),
+                "confidence": routing_result["confidence"]
+            }
+            
+        elif route_type == "backend_productivity":
+            return {
+                "success": True,
+                "processing_type": "backend_calculation",
+                "route_type": route_type, 
+                "original_input": routing_result["user_input"],
+                "requires_llm": False,
+                "backend_action": "calculate_productivity_stats",
+                "confidence": routing_result["confidence"]
+            }
+        
+        return {
+            "success": False,
+            "error": "unknown_backend_route",
+            "route_type": route_type,
+            "backend_action": "show_error_message"
+        }
+    
+    def _record_pipeline_metrics(
+        self, 
+        routing_result: Dict, 
+        processing_result: Dict,
+        processing_time: float
+    ):
+        """
+        Record metrics for monitoring
+        
+        Args:
+            routing_result: Routing decision
+            processing_result: Processing result
+            processing_time: Total time in seconds
+        """
+        self.metrics.record_pipeline_execution(
+            route_type=routing_result["route_type"],
+            requires_llm=routing_result["requires_llm"],
+            success=processing_result.get("success", False),
+            processing_time=processing_time,
+            user_id=routing_result.get("user_context", {}).get("user_id", "unknown")
+        )
+    
+    def _create_error_response(
+        self,
+        error_type: str,
+        error_message: str,
+        user_input: str,
+        user_context: Dict
+    ) -> Dict[str, Any]:
+        """
+        Create error response when pipeline fails
+        
+        Args:
+            error_type: Type of error
+            error_message: Error message
+            user_input: Original input
+            user_context: User context
+            
+        Returns:
+            Error response dict
+        """
+        return {
+            "success": False,
+            "error": error_type,
+            "error_message": error_message,
+            "original_input": user_input,
+            "user_context": user_context,
+            "backend_action": "show_error_message",
+            "fallback_message": "I'm having trouble processing your request. Please try again or contact support."
+        }
+    
+    def get_pipeline_stats(self) -> Dict[str, Any]:
+        """
+        Get pipeline statistics for monitoring
+        
+        Returns:
+            Pipeline statistics
+        """
+        try:
+            metrics_stats = self.metrics.get_stats()
+            cache_stats = self.cache_manager.get_stats()
+            
+            return {
+                "metrics": metrics_stats,
+                "cache": cache_stats,
+                "config": {
+                    "environment": config.environment,
+                    "cache_enabled": config.cache_enabled,
+                    "max_daily_cost": config.max_daily_cost_usd
+                }
+            }
+        except Exception as e:
+            logger.error(f"Error getting pipeline stats: {e}")
+            return {"error": str(e)}
+
+this is src/ai_engine/generation/response_validator.py
+"""
+Response Validator Module
+Validates AI-generated responses for quality and appropriateness
+"""
+
+import re
+from typing import Dict, Any, List, Set
+import logging
+
+from ..core.config import config
+
+logger = logging.getLogger(__name__)
+
+
+class ResponseValidator:
+    """
+    Validates AI-generated responses for quality, professionalism, and security
+    """
+    
+    def __init__(self):
+        # Professional tone indicators
+        self.professional_indicators = [
+            'completed', 'implemented', 'resolved', 'pending', 'reviewing',
+            'investigating', 'deployment', 'testing', 'development',
+            'addressing', 'coordinating', 'optimizing', 'analyzing'
+        ]
+        
+        # Unprofessional indicators to flag
+        self.unprofessional_indicators = [
+            'gonna', 'wanna', 'kinda', 'sorta', 'dunno', 'yeah', 'nope',
+            'totally', 'awesome', 'cool', 'sucks', 'crap', 'dude', 'bro'
+        ]
+        
+        # Compile sensitive information patterns
+        self._compile_sensitive_patterns()
+        
+        logger.info("ResponseValidator initialized")
+    
+    def _compile_sensitive_patterns(self):
+        """Compile regex patterns for sensitive information detection"""
+        self.sensitive_patterns = {
+            "ssn": re.compile(r'\b\d{3}-\d{2}-\d{4}\b'),
+            "credit_card": re.compile(r'\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b'),
+            "password": re.compile(r'\bpassword[:\s]+\S+', re.IGNORECASE),
+            # Email pattern - but we'll be smarter about it
+            "personal_email": re.compile(r'\b[A-Za-z0-9._%+-]+@(?!company\.com|organization\.org)[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
+        }
+    
+    def validate_response(
+        self, 
+        generated_content: str, 
+        response_type: str
+    ) -> Dict[str, Any]:
+        """
+        Validate AI-generated response for quality and appropriateness
+        
+        Args:
+            generated_content: The AI-generated text
+            response_type: Type of response (llm_rephrasing, llm_email, etc.)
+            
+        Returns:
+            Validation results with scores and flags
+        """
+        try:
+            validation_result = {
+                "overall_score": 0.0,
+                "professional_tone_score": 0.0,
+                "length_appropriate": False,
+                "has_sensitive_info": False,
+                "flags": [],
+                "recommendations": [],
+                "approved_for_auto_send": False
+            }
+            
+            # Check professional tone
+            prof_score = self._check_professional_tone(generated_content)
+            validation_result["professional_tone_score"] = prof_score
+            
+            # Check length appropriateness
+            length_check = self._check_length(generated_content, response_type)
+            validation_result["length_appropriate"] = length_check["appropriate"]
+            if not length_check["appropriate"]:
+                validation_result["flags"].append(length_check["issue"])
+                validation_result["recommendations"].append(length_check["recommendation"])
+            
+            # Check for sensitive information
+            sensitive_check = self._check_sensitive_info(generated_content)
+            validation_result["has_sensitive_info"] = sensitive_check["found"]
+            if sensitive_check["found"]:
+                validation_result["flags"].extend(sensitive_check["types"])
+                validation_result["recommendations"].append("Remove sensitive information before sending")
+            
+            # Check for completion markers (for comment rephrasing)
+            if response_type == "llm_rephrasing":
+                completion_check = self._check_completion_markers(generated_content)
+                validation_result["has_completion_markers"] = completion_check["found"]
+                if completion_check["found"]:
+                    validation_result["flags"].append(
+                        f"Contains completion markers: {', '.join(completion_check['markers'])}"
+                    )
+                    validation_result["recommendations"].append(
+                        "Verify task is actually complete before marking as done"
+                    )
+            
+            # Calculate overall score
+            overall_score = self._calculate_overall_score(validation_result)
+            validation_result["overall_score"] = overall_score
+            
+            # Determine if approved for auto-send
+            validation_result["approved_for_auto_send"] = (
+                overall_score >= config.auto_approval_threshold and 
+                not validation_result["has_sensitive_info"] and
+                len(validation_result["flags"]) == 0
+            )
+            
+            logger.info(
+                f"Response validated - Score: {overall_score:.2f}, "
+                f"Auto-approved: {validation_result['approved_for_auto_send']}"
+            )
+            
+            return validation_result
+            
+        except Exception as e:
+            logger.error(f"Validation error: {str(e)}", exc_info=True)
+            return {
+                "overall_score": 0.0,
+                "error": "validation_failed",
+                "approved_for_auto_send": False,
+                "flags": ["Validation failed - manual review required"]
+            }
+    
+    def _check_professional_tone(self, content: str) -> float:
+        """
+        Check professional tone of the content
+        
+        Args:
+            content: Text to check
+            
+        Returns:
+            Professionalism score (0.0 to 1.0)
+        """
+        if not content:
+            return 0.0
+        
+        content_lower = content.lower()
+        word_count = len(content.split())
+        
+        if word_count == 0:
+            return 0.0
+        
+        # Count professional indicators
+        prof_count = sum(1 for word in self.professional_indicators if word in content_lower)
+        
+        # Count unprofessional indicators (penalty)
+        unprof_count = sum(1 for word in self.unprofessional_indicators if word in content_lower)
+        
+        # Calculate professional ratio (normalize by word count)
+        prof_ratio = prof_count / max(word_count, 1)
+        unprof_penalty = unprof_count * 0.2
+        
+        # Base score starts at 0.7
+        base_score = 0.7
+        prof_bonus = min(prof_ratio * 2, 0.3)  # Max 0.3 bonus
+        
+        score = base_score + prof_bonus - unprof_penalty
+        return max(0.0, min(1.0, score))
+    
+    def _check_length(self, content: str, response_type: str) -> Dict[str, Any]:
+        """
+        Check if content length is appropriate for response type
+        
+        Args:
+            content: Text to check
+            response_type: Type of response
+            
+        Returns:
+            Dictionary with appropriateness and feedback
+        """
+        word_count = len(content.split())
+        char_count = len(content)
+        
+        if response_type == "llm_rephrasing":
+            # Jira comments should be concise but informative
+            if word_count < 3:
+                return {
+                    "appropriate": False,
+                    "issue": "Comment too short (less than 3 words)",
+                    "recommendation": "Add more detail about the task update"
+                }
+            elif word_count > 100:
+                return {
+                    "appropriate": False,
+                    "issue": "Comment too long (over 100 words)",
+                    "recommendation": "Make comment more concise for Jira"
+                }
+                
+        elif response_type == "llm_email":
+            # Emails can be longer but should be reasonable
+            if word_count < 10:
+                return {
+                    "appropriate": False,
+                    "issue": "Email too short (less than 10 words)",
+                    "recommendation": "Add more context and proper email structure"
+                }
+            elif word_count > 300:
+                return {
+                    "appropriate": False,
+                    "issue": "Email too long (over 300 words)",
+                    "recommendation": "Make email more concise for better readability"
+                }
+        
+        return {"appropriate": True}
+    
+    def _check_sensitive_info(self, content: str) -> Dict[str, Any]:
+        """
+        Check for potentially sensitive information
+        
+        Args:
+            content: Text to check
+            
+        Returns:
+            Dictionary with findings
+        """
+        found_types: Set[str] = set()
+        
+        # Check each pattern
+        for info_type, pattern in self.sensitive_patterns.items():
+            if pattern.search(content):
+                if info_type == "ssn":
+                    found_types.add("Potential SSN detected")
+                elif info_type == "credit_card":
+                    # Additional validation - check if it looks like a real credit card
+                    # (simple Luhn algorithm check could go here)
+                    found_types.add("Potential credit card number detected")
+                elif info_type == "password":
+                    found_types.add("Password information detected")
+                elif info_type == "personal_email":
+                    # Only flag non-business emails
+                    found_types.add("Personal email address detected")
+        
+        return {
+            "found": len(found_types) > 0,
+            "types": list(found_types)
+        }
+    
+    def _check_completion_markers(self, content: str) -> Dict[str, Any]:
+        """
+        Check for task completion markers in rephrased comments
+        
+        Args:
+            content: Text to check
+            
+        Returns:
+            Dictionary with found markers
+        """
+        completion_words = ['completed', 'finished', 'done', 'resolved', 'closed']
+        content_lower = content.lower()
+        
+        found_markers = [word for word in completion_words if word in content_lower]
+        
+        return {
+            "found": len(found_markers) > 0,
+            "markers": found_markers
+        }
+    
+    def _calculate_overall_score(self, validation_result: Dict[str, Any]) -> float:
+        """
+        Calculate overall validation score
+        
+        Args:
+            validation_result: Current validation results
+            
+        Returns:
+            Overall score (0.0 to 1.0)
+        """
+        base_score = validation_result["professional_tone_score"]
+        
+        # Length penalty
+        if not validation_result["length_appropriate"]:
+            base_score -= 0.2
+        
+        # Sensitive info penalty (major)
+        if validation_result["has_sensitive_info"]:
+            base_score -= 0.5
+        
+        # Flag penalties
+        flag_penalty = len(validation_result["flags"]) * 0.1
+        base_score -= flag_penalty
+        
+        return max(0.0, min(1.0, base_score))
+    
+    def quick_validate(self, content: str) -> bool:
+        """
+        Quick validation check (for performance)
+        
+        Args:
+            content: Text to validate
+            
+        Returns:
+            True if content passes basic checks
+        """
+        # Quick checks only
+        if not content or len(content.strip()) < 3:
+            return False
+        
+        # Check for obvious unprofessional words
+        content_lower = content.lower()
+        if any(word in content_lower for word in ['fuck', 'shit', 'damn', 'crap']):
+            return False
+        
+        # Check for obvious sensitive info patterns
+        if re.search(r'\b\d{3}-\d{2}-\d{4}\b', content):  # SSN
+            return False
+        
+        return True
+
+this is src/ai_engine/core/config.py
+from typing import Dict, Any, Optional, List
+import os
+from pathlib import Path
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import validator,field_validator
+
+
+class AIEngineConfig(BaseSettings):
+    """Complete AI Engine Configuration"""
+    
+    # OpenAI Configuration
+    # openai_api_key: str = os.getenv("OPENAI_API_KEY")
+    openai_primary_model: str = "gpt-4-turbo-preview"
+    openai_fast_model: str = "gpt-3.5-turbo"
+    openai_classification_model: str = "gpt-3.5-turbo"
+    openai_max_tokens_primary: int = 1500
+    openai_max_tokens_fast: int = 1000
+    openai_timeout_seconds: int = 30
+    
+    # AI Processing Thresholds
+    similarity_threshold: float = 0.85
+    confidence_threshold: float = 0.8
+    quality_threshold: float = 0.7
+    auto_approval_threshold: float = 0.8
+    
+    # Caching Configuration
+    cache_enabled: bool = True
+    cache_ttl_comment_minutes: int = 1440  # 24 hours
+    cache_ttl_similarity_minutes: int = 60  # 1 hour
+    cache_max_size: int = 10000
+    
+    # for metrics manual testing and debugging
+    metrics_max_records: int = 1000
+    # Rate Limiting & Performance
+    max_requests_per_minute: int = 100
+    max_tokens_per_hour: int = 50000
+    batch_processing_enabled: bool = True
+    batch_size: int = 5
+    
+    # Validation & Quality Control
+    profanity_filter_enabled: bool = True
+    sensitive_info_detection: bool = True
+    length_validation_enabled: bool = True
+    
+    # Monitoring & Logging
+    detailed_logging: bool = True
+    metrics_collection_enabled: bool = True
+    performance_monitoring: bool = True
+    alert_on_high_error_rate: bool = True
+    error_rate_threshold: float = 0.1  # 10%
+    
+    # Production Optimizations
+    use_embedding_cache: bool = True
+    enable_prompt_compression: bool = True
+    fallback_enabled: bool = True
+    graceful_degradation: bool = True
+    
+    # Development vs Production
+    environment: str = "development"  # development/staging/production
+    debug_mode: bool = True
+    test_mode: bool = False
+    
+    @validator('openai_api_key',check_fields=False)
+    def validate_openai_key(cls, v):
+        if not v or not v.startswith('sk-'):
+            raise ValueError('Invalid OpenAI API key format')
+        return v
+    
+    @validator('confidence_threshold', 'quality_threshold', 'auto_approval_threshold')
+    def validate_thresholds(cls, v):
+        if not 0.0 <= v <= 1.0:
+            raise ValueError('Thresholds must be between 0.0 and 1.0')
+        return v
+    
+    @validator('environment')
+    def validate_environment(cls, v):
+        if v not in ['development', 'staging', 'production']:
+            raise ValueError('Environment must be development, staging, or production')
+        return v
+    
+    @property
+    def is_production(self) -> bool:
+        return self.environment == "production"
+    
+    @property
+    def model_info(self) -> Dict[str, Any]:
+        return {
+            "primary": self.openai_primary_model,
+            "fast": self.openai_fast_model, 
+            "classification": self.openai_classification_model
+        }
+    
+    @property
+    def token_limits(self) -> Dict[str, int]:
+        return {
+            self.openai_primary_model: self.openai_max_tokens_primary,
+            self.openai_fast_model: self.openai_max_tokens_fast,
+            self.openai_classification_model: self.openai_max_tokens_fast
+        }
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_prefix="AI_ENGINE_",
+        extra="ignore" 
+)
+
+# Global config instance
+config = AIEngineConfig()
+settings = config
+__all__ = ['config', 'settings', 'AIEngineConfig']
+
+this is src/ai_engine/utils/advanced_cache.py
+
+import hashlib
+import json
+from typing import Any, Optional, Dict, List, Tuple, Union
+from datetime import datetime, timedelta
+import numpy as np
+from numpy.typing import NDArray
+
+try:
+    import torch  # type: ignore
+except ImportError:
+    torch = None  # type: ignore
+
+try:
+    from sentence_transformers import SentenceTransformer
+except ImportError:
+    SentenceTransformer = None  # type: ignore
+import logging
+from ..core.config import config, settings
+
+logger = logging.getLogger(__name__)
+
+class SemanticCacheManager:
+    def __init__(self):
+        self._cache: Dict[str, Dict[str, Any]] = {}
+        self._embeddings: Dict[str, NDArray[np.float32]] = {}
+        self._embedding_model = None
+        self.max_cache_size = config.cache_max_size
+        
+        if config.use_embedding_cache:
+            self._initialize_embedding_model()
+    
+    def _initialize_embedding_model(self):
+        """Initialize sentence transformer for semantic similarity"""
+        if SentenceTransformer is None:
+            logger.warning("SentenceTransformer is not installed. Disabling embedding cache.")
+            config.use_embedding_cache = False
+            return
+
+        try:
+            self._embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            logger.info("Semantic embedding model loaded successfully")
+        except Exception as e:
+            logger.warning(f"Failed to load embedding model: {e}. Falling back to exact matching.")
+            config.use_embedding_cache = False
+    
+    def get_similar(self, text: str, cache_type: str, similarity_threshold: float = None) -> Optional[Any]:
+        """Get cached result for semantically similar text"""
+        if not config.cache_enabled:
+            return None
+            
+        similarity_threshold = similarity_threshold or config.similarity_threshold
+        
+        try:
+            # Try exact match first (fastest)
+            exact_key = self._generate_exact_key(text, cache_type)
+            exact_result = self._get_by_key(exact_key)
+            if exact_result:
+                logger.debug("Cache hit: exact match")
+                return exact_result
+            
+            # Try semantic similarity if enabled
+            if config.use_embedding_cache and self._embedding_model:
+                similar_result = self._find_similar_cached(text, cache_type, similarity_threshold)
+                if similar_result:
+                    logger.debug("Cache hit: semantic similarity")
+                    return similar_result
+            
+            logger.debug("Cache miss")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Cache retrieval error: {e}")
+            return None
+    
+    def set(self, text: str, cache_type: str, value: Any, ttl_minutes: int = None):
+        """Store value in cache with semantic indexing"""
+        if not config.cache_enabled:
+            return
+            
+        try:
+            ttl_minutes = ttl_minutes or config.cache_ttl_comment_minutes
+            expiry_time = datetime.now() + timedelta(minutes=ttl_minutes)
+            
+            cache_key = self._generate_exact_key(text, cache_type)
+            
+            # Store in main cache
+            self._cache[cache_key] = {
+                "value": value,
+                "text": text,
+                "cache_type": cache_type,
+                "created_at": datetime.now().isoformat(),
+                "expires_at": expiry_time.isoformat(),
+                "access_count": 0
+            }
+            
+            # Generate and store embedding if enabled
+            if config.use_embedding_cache and self._embedding_model:
+                try:
+                    embedding = self._embedding_model.encode(text)
+                    self._embeddings[cache_key] = embedding
+                except Exception as e:
+                    logger.warning(f"Failed to generate embedding: {e}")
+            
+            # Clean up if cache is too large
+            self._cleanup_if_needed()
+            
+            logger.debug(f"Cached: {cache_type} - {len(text)} chars")
+            
+        except Exception as e:
+            logger.error(f"Cache storage error: {e}")
+    
+    def _find_similar_cached(self, text: str, cache_type: str, threshold: float) -> Optional[Any]:
+        """Find semantically similar cached content"""
+        try:
+            query_embedding = self._embedding_model.encode(text)
+            if torch is not None and isinstance(query_embedding, torch.Tensor):
+                query_embedding = query_embedding.cpu().numpy()
+            best_match = None
+            best_similarity = 0.0
+            
+            for cache_key, cache_data in self._cache.items():
+                if cache_data["cache_type"] != cache_type:
+                    continue
+                    
+                if self._is_expired(cache_data):
+                    continue
+                    
+                if cache_key not in self._embeddings:
+                    continue
+                
+                # Calculate cosine similarity
+                cached_embedding = self._embeddings[cache_key]
+                similarity = np.dot(query_embedding, cached_embedding) / (
+                    np.linalg.norm(query_embedding) * np.linalg.norm(cached_embedding)
+                )
+                
+                if similarity > threshold and similarity > best_similarity:
+                    best_similarity = similarity
+                    best_match = cache_data
+            
+            if best_match:
+                # Update access count
+                best_match["access_count"] += 1
+                logger.info(f"Semantic match found: similarity {best_similarity:.3f}")
+                return best_match["value"]
+                
+            return None
+            
+        except Exception as e:
+            logger.error(f"Semantic similarity search error: {e}")
+            return None
+    
+    def _generate_exact_key(self, text: str, cache_type: str) -> str:
+        """Generate exact cache key"""
+        content = f"{cache_type}:{text.lower().strip()}"
+        return hashlib.md5(content.encode()).hexdigest()
+    
+    def _get_by_key(self, key: str) -> Optional[Any]:
+        """Get cached value by exact key"""
+        if key not in self._cache:
+            return None
+            
+        cache_data = self._cache[key]
+        
+        if self._is_expired(cache_data):
+            self._remove_key(key)
+            return None
+            
+        cache_data["access_count"] += 1
+        return cache_data["value"]
+    
+    def _is_expired(self, cache_data: Dict) -> bool:
+        """Check if cache data is expired"""
+        expires_at = datetime.fromisoformat(cache_data["expires_at"])
+        return datetime.now() > expires_at
+    
+    def _remove_key(self, key: str):
+        """Remove key from cache and embeddings"""
+        self._cache.pop(key, None)
+        self._embeddings.pop(key, None)
+    
+    def _cleanup_if_needed(self):
+        """Clean up cache if it exceeds max size"""
+        if len(self._cache) <= self.max_cache_size:
+            return
+            
+        # Remove expired items first
+        expired_keys = [
+            key for key, data in self._cache.items() 
+            if self._is_expired(data)
+        ]
+        
+        for key in expired_keys:
+            self._remove_key(key)
+        
+        # If still too large, remove least accessed items
+        if len(self._cache) > self.max_cache_size:
+            sorted_items = sorted(
+                self._cache.items(),
+                key=lambda x: (x[1]["access_count"], x[1]["created_at"])
+            )
+            
+            items_to_remove = len(self._cache) - self.max_cache_size
+            for key, _ in sorted_items[:items_to_remove]:
+                self._remove_key(key)
+        
+        logger.info(f"Cache cleanup completed. Size: {len(self._cache)}")
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get cache statistics"""
+        if not self._cache:
+            return {"size": 0, "embedding_enabled": config.use_embedding_cache}
+        
+        total_access = sum(data["access_count"] for data in self._cache.values())
+        cache_types = {}
+        
+        for data in self._cache.values():
+            cache_type = data["cache_type"]
+            cache_types[cache_type] = cache_types.get(cache_type, 0) + 1
+        
+        return {
+            "size": len(self._cache),
+            "total_accesses": total_access,
+            "embedding_enabled": config.use_embedding_cache,
+            "embedding_count": len(self._embeddings),
+            "cache_types": cache_types,
+            "max_size": self.max_cache_size
+        }
+
+this is src/ai_engine/utils/error_handler.py
+import logging
+import traceback
+from typing import Dict, Any, Optional, Callable
+from functools import wraps
+from datetime import datetime, timedelta
+from collections import defaultdict
+from ..core.config import config
+
+logger = logging.getLogger(__name__)
+
+class ProductionErrorHandler:
+    """Production-grade error handling with monitoring and alerts"""
+    
+    def __init__(self):
+        self.error_counts = defaultdict(int)
+        self.error_history = []
+        self.last_alert_time = {}
+        self.circuit_breakers = {}
+    
+    def with_error_handling(self, component_name: str, fallback_response: Optional[Dict] = None):
+        """Decorator for robust error handling with circuit breaker pattern"""
+        def decorator(func: Callable):
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                try:
+                    # Check circuit breaker
+                    if self._is_circuit_open(component_name):
+                        logger.warning(f"Circuit breaker open for {component_name}")
+                        return self._get_circuit_breaker_response(component_name, fallback_response)
+                    
+                    # Execute function
+                    result = func(*args, **kwargs)
+                    
+                    # Record success (reset circuit breaker)
+                    self._record_success(component_name)
+                    
+                    return result
+                    
+                except Exception as e:
+                    # Record error
+                    error_context = self._record_error(component_name, e, args, kwargs)
+                    
+                    # Check if we should open circuit breaker
+                    self._update_circuit_breaker(component_name)
+                    
+                    # Send alerts if needed
+                    if self._should_send_alert(component_name):
+                        self._send_error_alert(component_name, e, error_context)
+                    
+                    # Return fallback response or raise
+                    if fallback_response is not None:
+                        logger.info(f"Using fallback response for {component_name}")
+                        return fallback_response
+                    
+                    # Re-raise if no fallback
+                    raise e
+                    
+            return wrapper
+        return decorator
+    
+    def _record_error(self, component_name: str, error: Exception, args, kwargs) -> Dict:
+        """Record error details for monitoring"""
+        error_context = {
+            "component": component_name,
+            "error_type": type(error).__name__,
+            "error_message": str(error),
+            "timestamp": datetime.now().isoformat(),
+            "args_count": len(args),
+            "kwargs_keys": list(kwargs.keys()) if kwargs else [],
+            "traceback": traceback.format_exc()
+        }
+        
+        self.error_counts[component_name] += 1
+        self.error_history.append(error_context)
+        
+        # Keep only recent errors (last 1000)
+        if len(self.error_history) > 1000:
+            self.error_history = self.error_history[-1000:]
+        
+        logger.error(f"Error in {component_name}: {error_context['error_type']} - {error_context['error_message']}")
+        
+        return error_context
+    
+    def _record_success(self, component_name: str):
+        """Record successful execution"""
+        if component_name in self.circuit_breakers:
+            self.circuit_breakers[component_name]["consecutive_failures"] = 0
+    
+    def _is_circuit_open(self, component_name: str) -> bool:
+        """Check if circuit breaker is open"""
+        if component_name not in self.circuit_breakers:
+            return False
+            
+        breaker = self.circuit_breakers[component_name]
+        
+        # Check if enough time has passed to try again
+        if breaker["state"] == "open":
+            if datetime.now() > breaker["next_attempt"]:
+                breaker["state"] = "half_open"
+                logger.info(f"Circuit breaker for {component_name} moved to half-open")
+                return False
+            return True
+            
+        return False
+    
+    def _update_circuit_breaker(self, component_name: str):
+        """Update circuit breaker state based on errors"""
+        if component_name not in self.circuit_breakers:
+            self.circuit_breakers[component_name] = {
+                "consecutive_failures": 0,
+                "state": "closed",  # closed, open, half_open
+                "next_attempt": None,
+                "failure_threshold": 5,
+                "timeout_minutes": 5
+            }
+        
+        breaker = self.circuit_breakers[component_name]
+        breaker["consecutive_failures"] += 1
+        
+        # Open circuit if too many failures
+        if breaker["consecutive_failures"] >= breaker["failure_threshold"]:
+            breaker["state"] = "open"
+            breaker["next_attempt"] = datetime.now() + timedelta(minutes=breaker["timeout_minutes"])
+            logger.warning(f"Circuit breaker opened for {component_name} after {breaker['consecutive_failures']} failures")
+    
+    def _get_circuit_breaker_response(self, component_name: str, fallback_response: Optional[Dict]) -> Dict:
+        """Get response when circuit breaker is open"""
+        if fallback_response:
+            return {
+                **fallback_response,
+                "circuit_breaker_active": True,
+                "component": component_name
+            }
+        
+        return {
+            "success": False,
+            "error": "circuit_breaker_open",
+            "error_message": f"Service temporarily unavailable for {component_name}",
+            "circuit_breaker_active": True,
+            "retry_after_minutes": 5
+        }
+    
+    def _should_send_alert(self, component_name: str) -> bool:
+        """Determine if we should send an alert"""
+        if not config.alert_on_high_error_rate:
+            return False
+        
+        # Don't spam alerts - wait at least 10 minutes between alerts for same component
+        last_alert = self.last_alert_time.get(component_name)
+        if last_alert and datetime.now() - last_alert < timedelta(minutes=10):
+            return False
+        
+        # Calculate error rate in last 5 minutes
+        recent_errors = [
+            err for err in self.error_history
+            if err["component"] == component_name and
+            datetime.now() - datetime.fromisoformat(err["timestamp"]) < timedelta(minutes=5)
+        ]
+        
+        if len(recent_errors) >= 3:  # 3 errors in 5 minutes
+            return True
+        
+        return False
+    
+    def _send_error_alert(self, component_name: str, error: Exception, error_context: Dict):
+        """Send error alert (log for now, backend can implement email/slack)"""
+        self.last_alert_time[component_name] = datetime.now()
+        
+        alert_message = f"""
+        🚨 HIGH ERROR RATE ALERT 🚨
+        Component: {component_name}
+        Error: {type(error).__name__}: {str(error)}
+        Time: {error_context['timestamp']}
+        Recent Error Count: {self.error_counts[component_name]}
+        """
+        
+        logger.critical(alert_message)
+        # Backend team can implement actual alerting (email, Slack, etc.)
+    
+    def get_error_stats(self) -> Dict[str, Any]:
+        """Get error statistics for monitoring"""
+        return {
+            "total_errors": len(self.error_history),
+            "errors_by_component": dict(self.error_counts),
+            "circuit_breakers": {
+                name: {
+                    "state": breaker["state"],
+                    "consecutive_failures": breaker["consecutive_failures"]
+                }
+                for name, breaker in self.circuit_breakers.items()
+            },
+            "recent_errors": [
+                {
+                    "component": err["component"],
+                    "error_type": err["error_type"],
+                    "timestamp": err["timestamp"]
+                }
+                for err in self.error_history[-10:]  # Last 10 errors
+            ]
+        }
+
+# Global error handler instance
+error_handler = ProductionErrorHandler()
+
+this is tests/test_ai_pipeline.py
+import pytest
+import unittest.mock as mock
+from src.ai_engine.core.pipeline import AIProcessingPipeline
+from src.ai_engine.classification.intent_classifier import RouteType
+from src.ai_engine.core.config import config
+
+class TestAIPipeline:
+    """Comprehensive tests for AI processing pipeline"""
+    
+    @pytest.fixture
+    def pipeline(self):
+        """Create pipeline instance for testing"""
+        return AIProcessingPipeline()
+    
+    @pytest.fixture
+    def mock_user_context(self):
+        """Mock user context for testing"""
+        return {
+            "user_id": "test_user_123",
+            "user_name": "Test User",
+            "role": "developer",
+            "session_id": "session_456"
+        }
+    
+    def test_backend_completion_routing(self, pipeline, mock_user_context):
+        """Test simple completion routing (backend shortcut)"""
+        user_input = "done"
+        
+        result = pipeline.process_user_request(user_input, mock_user_context)
+        
+        assert result["success"] == True
+        assert result["route_type"] == "backend_completion"
+        assert result["requires_llm"] == False
+        assert result["backend_action"] == "mark_task_complete"
+    
+    def test_productivity_query_routing(self, pipeline, mock_user_context):
+        """Test productivity query routing"""
+        user_input = "how productive was I this week?"
+        
+        result = pipeline.process_user_request(user_input, mock_user_context)
+        
+        assert result["success"] == True
+        assert result["route_type"] == "backend_productivity"
+        assert result["requires_llm"] == False
+        assert result["backend_action"] == "calculate_productivity_stats"
+    
+    @mock.patch('src.ai_engine.models.model_manager.ModelManager.generate_completion')
+    def test_comment_generation_success(self, mock_llm, pipeline, mock_user_context):
+        """Test successful comment generation"""
+        user_input = "I fixed the button alignment issue and tested it on staging"
+        
+        # Mock LLM response
+        mock_llm.return_value = {
+            "success": True,
+            "content": "Resolved button alignment issue. Testing completed on staging environment.",
+            "usage": {"total_tokens": 50},
+            "model_used": "gpt-4-turbo-preview"
+        }
+        
+        result = pipeline.process_user_request(user_input, mock_user_context)
+        
+        assert result["success"] == True
+        assert result["processing_type"] == "comment_generation"
+        assert "Resolved button alignment issue" in result["generated_content"]
+        assert result["requires_user_approval"] == True
+        assert result["backend_action"] == "show_comment_for_approval"
+    
+    @mock.patch('src.ai_engine.models.model_manager.ModelManager.generate_completion')
+    def test_email_generation_success(self, mock_llm, pipeline, mock_user_context):
+        """Test successful email generation"""
+        user_input = "write an email for sick leave tomorrow"
+        
+        # Mock LLM response
+        mock_llm.return_value = {
+            "success": True,
+            "content": "Subject: Sick Leave Request\n\nDear Manager,\n\nI am writing to inform you that I will not be able to come to work tomorrow due to illness.\n\nBest regards,\nTest User",
+            "usage": {"total_tokens": 75},
+            "model_used": "gpt-4-turbo-preview"
+        }
+        
+        result = pipeline.process_user_request(user_input, mock_user_context)
+        
+        assert result["success"] == True
+        assert result["processing_type"] == "email_generation"
+        assert "Subject: Sick Leave Request" in result["generated_content"]
+        assert result["requires_user_approval"] == True
+        assert result["backend_action"] == "show_email_for_approval"
+    
+    @mock.patch('src.ai_engine.models.model_manager.ModelManager.generate_completion')
+    def test_llm_failure_handling(self, mock_llm, pipeline, mock_user_context):
+        """Test handling of LLM failures"""
+        user_input = "I'm working on the complex feature implementation"
+        
+        # Mock LLM failure
+        mock_llm.return_value = {
+            "success": False,
+            "error": "api_error",
+            "error_message": "OpenAI API rate limit exceeded"
+        }
+        
+        result = pipeline.process_user_request(user_input, mock_user_context)
+        
+        assert result["success"] == False
+        assert "error" in result
+    
+    def test_invalid_input_handling(self, pipeline, mock_user_context):
+        """Test handling of invalid/empty input"""
+        user_input = ""
+        
+        result = pipeline.process_user_request(user_input, mock_user_context)
+        
+        # Should handle gracefully
+        assert "success" in result
+    
+    @mock.patch('src.ai_engine.generation.comment_generator.CommentGenerator.generate_professional_comment')
+    def test_cache_hit(self, mock_generator, pipeline, mock_user_context):
+        user_input = "I fixed the API bug"  # LLM route, not backend
+        
+        # First call
+        mock_generator.return_value = {
+            "success": True,
+            "professional_comment": "Resolved API bug.",
+            "from_cache": False
+        }
+        result1 = pipeline.process_user_request(user_input, mock_user_context)
+        
+        # Second call - should use cache
+        result2 = pipeline.process_user_request(user_input, mock_user_context)
+        
+        # Generator should only be called once due to caching
+        assert mock_generator.call_count == 1
+
+if __name__ == "__main__":
+    pytest.main([__file__])
+
+    this is tests/test_intent_classifier.py
+
+    import pytest
+from src.ai_engine.classification.intent_classifier import IntentClassifier, RouteType
+
+class TestIntentClassifier:
+    """Test intent classification accuracy"""
+    
+    @pytest.fixture
+    def classifier(self):
+        return IntentClassifier()
+    
+    def test_simple_completion_detection(self, classifier):
+        """Test detection of simple completion statements"""
+        test_cases = [
+            "done",
+            "task is completed", 
+            "finished",
+            "mark as complete",
+            "  done  "  # with whitespace
+        ]
+        
+        for test_input in test_cases:
+            result = classifier.classify(test_input)
+            assert result.route_type == RouteType.BACKEND_COMPLETION
+            assert result.confidence >= 0.9
+    
+    def test_productivity_query_detection(self, classifier):
+        """Test detection of productivity queries"""
+        test_cases = [
+            "how productive was I this week?",
+            "my productivity stats",
+            "how many tasks completed",
+            "weekly report"
+        ]
+        
+        for test_input in test_cases:
+            result = classifier.classify(test_input)
+            assert result.route_type == RouteType.BACKEND_PRODUCTIVITY
+            assert result.confidence >= 0.8
+    
+    def test_email_request_detection(self, classifier):
+        """Test detection of email requests"""
+        test_cases = [
+            "write an email",
+            "send email to my manager", 
+            "compose sick leave email",
+            "email for vacation request"
+        ]
+        
+        for test_input in test_cases:
+            result = classifier.classify(test_input)
+            assert result.route_type == RouteType.LLM_EMAIL
+            assert result.confidence >= 0.8
+    
+    def test_complex_update_detection(self, classifier):
+        """Test detection of complex updates requiring rephrasing"""
+        test_cases = [
+            "I fixed the login bug and tested it on staging environment",
+            "Working on the API implementation, waiting for review",
+            "Implemented the feature but blocked by database issues"
+        ]
+        
+        for test_input in test_cases:
+            result = classifier.classify(test_input)
+            assert result.route_type == RouteType.LLM_REPHRASING
+            assert result.confidence >= 0.7
+
+if __name__ == "__main__":
+    pytest.main([__file__])
+    
+
+    this is src/ai_engine/utils/monitoring.py
+    from typing import Dict, Any, List
+import time
+from datetime import datetime, timedelta
+from .metrics import MetricsCollector
+from .error_handler import error_handler
+from .advanced_cache import SemanticCacheManager
+from ..core.config import config
+
+
+class ProductionMonitor:
+    """Production monitoring and health check system"""
+    
+    def __init__(self):
+        self.metrics = MetricsCollector()
+        self.start_time = datetime.now()
+    
+    def get_health_status(self) -> Dict[str, Any]:
+        """Get overall system health status"""
+        try:
+            # Check critical components
+            openai_healthy = self._check_openai_health()
+            cache_healthy = self._check_cache_health()
+            error_rate_ok = self._check_error_rate()
+            
+            overall_healthy = openai_healthy and cache_healthy and error_rate_ok
+            
+            return {
+                "healthy": overall_healthy,
+                "timestamp": datetime.now().isoformat(),
+                "uptime_hours": self._get_uptime_hours(),
+                "components": {
+                    "openai_api": {"healthy": openai_healthy},
+                    "cache_system": {"healthy": cache_healthy},
+                    "error_rate": {"healthy": error_rate_ok}
+                },
+                "environment": config.environment,
+                "version": "1.0.0"
+            }
+            
+        except Exception as e:
+            return {
+                "healthy": False,
+                "error": f"Health check failed: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            }
+    
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """Get detailed performance metrics"""
+        try:
+            stats = self.metrics.get_stats()
+            error_stats = error_handler.get_error_stats()
+            
+            return {
+                "requests": {
+                    "total_processed": stats.get("total_classifications", 0),
+                    "backend_shortcuts": stats.get("backend_shortcuts", 0),
+                    "llm_calls": stats.get("llm_calls", 0),
+                    "average_confidence": stats.get("average_confidence", 0.0)
+                },
+                "performance": {
+                    "cache_hit_rate": self._calculate_cache_hit_rate(),
+                    "average_response_time": self._get_average_response_time(),
+                    "tokens_per_hour": self._get_tokens_per_hour(),
+                    "cost_efficiency": self._calculate_cost_efficiency()
+                },
+                "errors": {
+                    "total_errors": error_stats.get("total_errors", 0),
+                    "error_rate": self._calculate_error_rate(),
+                    "errors_by_component": error_stats.get("errors_by_component", {}),
+                    "circuit_breakers": error_stats.get("circuit_breakers", {})
+                },
+                "quality": {
+                    "average_quality_score": self._get_average_quality_score(),
+                    "auto_approval_rate": self._get_auto_approval_rate(),
+                    "user_edit_rate": self._get_user_edit_rate()
+                },
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            return {
+                "error": f"Failed to get performance metrics: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            }
+    
+    def get_cost_analysis(self) -> Dict[str, Any]:
+        """Get cost analysis and optimization suggestions"""
+        try:
+            api_calls = self.metrics.metrics.get("api_calls", [])
+
+            if not api_calls:
+                return {"total_cost_estimate": 0.0, "suggestions": []}
+
+            # Get pricing from config
+            from ..core.config import config
+            cost_config = config.cost_config
+
+            total_cost = 0.0
+            model_usage = {}
+
+            for call in api_calls:
+                model = call.get("model", "")
+                prompt_tokens = call.get("prompt_tokens", 0)
+                completion_tokens = call.get("completion_tokens", 0)
+
+                if model not in model_usage:
+                    model_usage[model] = {"tokens": 0, "calls": 0, "cost": 0.0}
+
+                model_usage[model]["tokens"] += prompt_tokens + completion_tokens
+                model_usage[model]["calls"] += 1
+
+                # Calculate cost properly
+                if model in cost_config:
+                    pricing = cost_config[model]
+                    cost = (
+                        (prompt_tokens / 1000 * pricing.get("input", 0)) +
+                        (completion_tokens / 1000 * pricing.get("output", 0))
+                    )
+                    total_cost += cost
+                    model_usage[model]["cost"] += cost
+
+            # ✅ move this inside the try block
+            suggestions = self._generate_cost_optimization_suggestions(model_usage, api_calls)
+
+            return {
+                "total_cost_estimate": round(total_cost, 4),
+                "total_tokens": sum(m["tokens"] for m in model_usage.values()),
+                "model_usage": model_usage,
+                "cost_per_request": round(total_cost / max(len(api_calls), 1), 4),
+                "optimization_suggestions": suggestions,
+                "analysis_period": "current_session",
+                "timestamp": datetime.now().isoformat()
+            }
+
+        except Exception as e:
+            return {
+                "error": f"Cost analysis failed: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            }
+    
+    def _check_openai_health(self) -> bool:
+        """Check if OpenAI API is accessible"""
+        try:
+            # Simple check - could be enhanced with actual API ping
+            return config.openai_api_key is not None and len(config.openai_api_key) > 20
+        except:
+            return False
+    
+    def _check_cache_health(self) -> bool:
+        """Check cache system health"""
+        try:
+            # Could add actual cache connectivity check
+            return config.cache_enabled
+        except:
+            return False
+    
+    def _check_error_rate(self) -> bool:
+        """Check if error rate is within acceptable limits"""
+        try:
+            error_stats = error_handler.get_error_stats()
+            total_errors = error_stats.get("total_errors", 0)
+            
+            # If we have very few interactions, consider it healthy
+            if total_errors < 5:
+                return True
+            
+            # Calculate error rate from metrics
+            total_requests = self.metrics.get_stats().get("total_classifications", 0)
+            if total_requests == 0:
+                return True
+                
+            error_rate = total_errors / total_requests
+            return error_rate <= config.error_rate_threshold
+            
+        except:
+            return False
+    
+    def _get_uptime_hours(self) -> float:
+        """Get uptime in hours"""
+        uptime = datetime.now() - self.start_time
+        return round(uptime.total_seconds() / 3600, 2)
+    
+    def _calculate_cache_hit_rate(self) -> float:
+        """Calculate cache hit rate"""
+        try:
+            # This would need to be implemented in cache manager
+            return 0.0  # Placeholder
+        except:
+            return 0.0
+    
+    def _get_average_response_time(self) -> float:
+        """Get average response time"""
+        try:
+            # This would be tracked by metrics collector
+            return 0.0  # Placeholder
+        except:
+            return 0.0
+    
+    def _get_tokens_per_hour(self) -> int:
+        """Calculate tokens used per hour"""
+        try:
+            api_calls = self.metrics.metrics.get("api_calls", [])
+            if not api_calls:
+                return 0
+                
+            total_tokens = sum(call.get("tokens_used", 0) for call in api_calls)
+            uptime_hours = self._get_uptime_hours()
+            
+            return int(total_tokens / max(uptime_hours, 1))
+            
+        except:
+            return 0
+    
+    def _calculate_cost_efficiency(self) -> Dict[str, float]:
+        """Calculate cost efficiency metrics"""
+        try:
+            stats = self.metrics.get_stats()
+            backend_shortcuts = stats.get("backend_shortcuts", 0)
+            llm_calls = stats.get("llm_calls", 0)
+            total = backend_shortcuts + llm_calls
+            
+            if total == 0:
+                return {"backend_shortcut_rate": 0.0, "llm_usage_rate": 0.0}
+            
+            return {
+                "backend_shortcut_rate": round(backend_shortcuts / total, 3),
+                "llm_usage_rate": round(llm_calls / total, 3)
+            }
+            
+        except:
+            return {"backend_shortcut_rate": 0.0, "llm_usage_rate": 0.0}
+    
+    def _calculate_error_rate(self) -> float:
+        """Calculate current error rate"""
+        try:
+            error_stats = error_handler.get_error_stats()
+            total_errors = error_stats.get("total_errors", 0)
+            total_requests = self.metrics.get_stats().get("total_classifications", 0)
+            
+            if total_requests == 0:
+                return 0.0
+                
+            return round(total_errors / total_requests, 4)
+            
+        except:
+            return 0.0
+    
+    def _get_average_quality_score(self) -> float:
+        """Get average quality score of generated content"""
+        # This would be tracked by the pipeline
+        return 0.85  # Placeholder
+    
+    def _get_auto_approval_rate(self) -> float:
+        """Get rate of automatically approved content"""
+        # This would be tracked by the validation system
+        return 0.75  # Placeholder
+    
+    def _get_user_edit_rate(self) -> float:
+        """Get rate of user edits on generated content"""
+        # This would be tracked by backend
+        return 0.20  # Placeholder
+    
+    def _generate_cost_optimization_suggestions(self, model_usage: Dict, api_calls: List) -> List[str]:
+        """Generate cost optimization suggestions"""
+        suggestions = []
+        
+        try:
+            total_calls = len(api_calls)
+            gpt4_calls = model_usage.get("gpt-4-turbo-preview", {}).get("calls", 0)
+            
+            # Suggest using faster models
+            if gpt4_calls / max(total_calls, 1) > 0.7:
+                suggestions.append("Consider using GPT-3.5-turbo for simple classification tasks to reduce costs")
+            
+            # Suggest better caching
+            if config.cache_enabled and self._calculate_cache_hit_rate() < 0.3:
+                suggestions.append("Improve semantic caching to reduce duplicate API calls")
+            
+            # Suggest prompt optimization
+            avg_tokens = sum(call.get("tokens_used", 0) for call in api_calls) / max(len(api_calls), 1)
+            if avg_tokens > 800:
+                suggestions.append("Optimize prompts to reduce token usage per request")
+            
+            # Suggest batch processing
+            if total_calls > 50:
+                suggestions.append("Implement batch processing for non-urgent requests")
+            
+            if not suggestions:
+                suggestions.append("Cost optimization is performing well - no immediate suggestions")
+                
+        except Exception as e:
+            suggestions.append(f"Could not generate optimization suggestions: {str(e)}")
+        
+        return suggestions
+
+
+# Global monitor instance
+production_monitor = ProductionMonitor()
+
+
+this is src/ai_engine/main.py
+"""
+Main Entry Point for AI Engine
+This is the interface for the backend team to use
+"""
+
+import time
+import logging
+from typing import Dict, Any, Optional
+
+from .core.pipeline import AIProcessingPipeline
+from .core.config import config
+from .utils.monitoring import production_monitor
+from .utils.error_handler import error_handler
+
+# Configure logging based on environment
+logging.basicConfig(
+    level=logging.DEBUG if config.debug_mode else logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+logger = logging.getLogger(__name__)
+
+
+class JiraAIAssistant:
+    """
+    Main AI Assistant class - clean interface for backend team
+    
+    Usage:
+        from src.ai_engine.main import ai_assistant
+        
+        result = ai_assistant.process_user_message(
+            user_input="I tested the API",
+            user_context={"user_id": "123", "user_name": "John"}
+        )
+    """
+    
+    def __init__(self):
+        """Initialize the AI Assistant with all dependencies"""
+        try:
+            self.pipeline = AIProcessingPipeline()
+            self.initialized = True
+            
+            logger.info(
+                f"Jira AI Assistant initialized successfully "
+                f"(Environment: {config.environment})"
+            )
+            
+            # Log configuration summary
+            if config.debug_mode:
+                logger.debug(f"Config: {self._get_config_summary()}")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize AI Assistant: {str(e)}", exc_info=True)
+            self.initialized = False
+            raise
+    
+    @error_handler.with_error_handling(
+        "main_processing",
+        fallback_response={
+            "success": False,
+            "error": "processing_unavailable",
+            "error_message": "AI processing temporarily unavailable",
+            "backend_action": "show_error_message"
+        }
+    )
+    def process_user_message(
+        self, 
+        user_input: str, 
+        user_context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Main method for processing user messages
+        
+        Args:
+            user_input: Raw user message
+            user_context: User information and context
+                Required fields: user_id
+                Optional fields: user_name, manager_name, role, department, etc.
+        
+        Returns:
+            Processing result with actions for backend
+            
+        Example:
+            result = assistant.process_user_message(
+                user_input="done with testing",
+                user_context={
+                    "user_id": "user123",
+                    "user_name": "John Doe",
+                    "role": "Senior Engineer"
+                }
+            )
+            
+            if result["success"]:
+                action = result["backend_action"]
+                # Handle action: mark_task_complete, show_comment_for_approval, etc.
+        """
+        if not self.initialized:
+            return {
+                "success": False,
+                "error": "not_initialized",
+                "error_message": "AI Assistant not properly initialized",
+                "backend_action": "show_error_message"
+            }
+        
+        # Validate inputs
+        if not user_input or not user_input.strip():
+            return {
+                "success": False,
+                "error": "empty_input",
+                "error_message": "Please provide a message",
+                "backend_action": "request_input"
+            }
+        
+        if not user_context or not user_context.get("user_id"):
+            return {
+                "success": False,
+                "error": "missing_context",
+                "error_message": "User context with user_id is required",
+                "backend_action": "request_authentication"
+            }
+        
+        # Check daily cost limit before processing
+        cost_status = self.pipeline.model_manager.check_daily_cost_limit()
+        
+        if cost_status.get("limit_reached"):
+            logger.error(
+                f"Daily cost limit reached: ${cost_status['daily_cost']:.2f} / "
+                f"${cost_status['max_cost']:.2f}"
+            )
+            return {
+                "success": False,
+                "error": "cost_limit_reached",
+                "error_message": f"Daily AI processing limit reached. Please try again tomorrow.",
+                "current_cost": cost_status["daily_cost"],
+                "max_cost": cost_status["max_cost"],
+                "backend_action": "show_cost_limit_message"
+            }
+        
+        # Alert if approaching limit
+        if cost_status.get("alert_needed"):
+            logger.warning(
+                f"Approaching cost limit: ${cost_status['daily_cost']:.2f} / "
+                f"${cost_status['max_cost']:.2f} ({cost_status['percentage_used']}%)"
+            )
+        
+        # Process the request
+        logger.info(
+            f"Processing request from user {user_context.get('user_id')}: "
+            f"{user_input[:50]}{'...' if len(user_input) > 50 else ''}"
+        )
+        
+        result = self.pipeline.process_user_request(user_input, user_context)
+        
+        # Add AI engine metadata
+        result["ai_engine_metadata"] = {
+            "version": "2.0",
+            "environment": config.environment,
+            "request_id": f"{user_context.get('user_id')}_{int(time.time())}",
+            "cost_status": {
+                "daily_cost": cost_status["daily_cost"],
+                "percentage_used": cost_status["percentage_used"]
+            }
+        }
+        
+        logger.info(
+            f"Request processed: {result.get('route_type', 'unknown')} "
+            f"(Success: {result.get('success', False)})"
+        )
+        
+        return result
+    
+    def get_health_status(self) -> Dict[str, Any]:
+        """
+        Get AI system health status
+        
+        Returns:
+            Health status with component checks
+            
+        Example:
+            health = assistant.get_health_status()
+            if not health["healthy"]:
+                # Alert ops team
+        """
+        return production_monitor.get_health_status()
+    
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """
+        Get performance and monitoring metrics
+        
+        Returns:
+            Comprehensive metrics for monitoring dashboard
+            
+        Example:
+            metrics = assistant.get_performance_metrics()
+            print(f"Cache hit rate: {metrics['performance']['cache_hit_rate']}")
+            print(f"Total cost: ${metrics['requests']['total_cost_usd']}")
+        """
+        return production_monitor.get_performance_metrics()
+    
+    def get_cost_analysis(self) -> Dict[str, Any]:
+        """
+        Get cost analysis and optimization suggestions
+        
+        Returns:
+            Cost breakdown and optimization recommendations
+            
+        Example:
+            costs = assistant.get_cost_analysis()
+            print(f"Daily cost: ${costs['total_cost_estimate']}")
+            for suggestion in costs['optimization_suggestions']:
+                print(f"- {suggestion}")
+        """
+        return production_monitor.get_cost_analysis()
+    
+    def get_pipeline_stats(self) -> Dict[str, Any]:
+        """
+        Get pipeline statistics
+        
+        Returns:
+            Pipeline performance stats
+        """
+        return self.pipeline.get_pipeline_stats()
+    
+    def validate_configuration(self) -> Dict[str, Any]:
+        """
+        Validate current configuration
+        
+        Returns:
+            Validation results with issues and warnings
+            
+        Example:
+            validation = assistant.validate_configuration()
+            if not validation["valid"]:
+                for issue in validation["issues"]:
+                    print(f"ERROR: {issue}")
+            for warning in validation["warnings"]:
+                print(f"WARNING: {warning}")
+        """
+        try:
+            issues = []
+            warnings = []
+            
+            # Check OpenAI configuration
+            if not config.openai_api_key:
+                issues.append("OpenAI API key not configured")
+            elif not config.openai_api_key.startswith('sk-'):
+                issues.append("Invalid OpenAI API key format")
+            
+            # Check model configuration
+            if config.openai_primary_model not in ["gpt-4o", "gpt-4", "gpt-4-turbo-preview"]:
+                warnings.append(f"Unusual primary model: {config.openai_primary_model}")
+            
+            # Check thresholds
+            if config.confidence_threshold < 0.7:
+                warnings.append("Confidence threshold is low - may affect accuracy")
+            
+            if config.quality_threshold < 0.6:
+                warnings.append("Quality threshold is low - may need more manual reviews")
+            
+            # Check production settings
+            if config.is_production and config.debug_mode:
+                warnings.append("Debug mode enabled in production environment")
+            
+            # Check cost limits
+            if config.max_daily_cost_usd <= 0:
+                warnings.append("No daily cost limit set")
+            
+            return {
+                "valid": len(issues) == 0,
+                "issues": issues,
+                "warnings": warnings,
+                "environment": config.environment,
+                "cache_enabled": config.cache_enabled,
+                "monitoring_enabled": config.metrics_collection_enabled,
+                "primary_model": config.openai_primary_model,
+                "max_daily_cost": config.max_daily_cost_usd
+            }
+            
+        except Exception as e:
+            return {
+                "valid": False,
+                "error": f"Configuration validation failed: {str(e)}"
+            }
+    
+    def _get_config_summary(self) -> Dict[str, Any]:
+        """Get configuration summary for logging"""
+        return {
+            "environment": config.environment,
+            "primary_model": config.openai_primary_model,
+            "cache_enabled": config.cache_enabled,
+            "max_daily_cost": config.max_daily_cost_usd,
+            "debug_mode": config.debug_mode
+        }
+
+
+# ============================================================================
+# Global Instance - Backend team imports this
+# ============================================================================
+
+ai_assistant = JiraAIAssistant()
+
+
+# ============================================================================
+# Convenience Functions for Backend Team
+# ============================================================================
+
+def process_message(user_input: str, user_context: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convenience function for processing messages
+    
+    Args:
+        user_input: User's message
+        user_context: User information (must include user_id)
+    
+    Returns:
+        Processing result
+    
+    Example:
+        from src.ai_engine.main import process_message
+        
+        result = process_message(
+            "I tested the API",
+            {"user_id": "123", "user_name": "John"}
+        )
+    """
+    return ai_assistant.process_user_message(user_input, user_context)
+
+
+def get_health() -> Dict[str, Any]:
+    """
+    Convenience function for health checks
+    
+    Example:
+        from src.ai_engine.main import get_health
+        
+        health = get_health()
+        if not health["healthy"]:
+            # Alert ops
+    """
+    return ai_assistant.get_health_status()
+
+
+def get_metrics() -> Dict[str, Any]:
+    """
+    Convenience function for metrics
+    
+    Example:
+        from src.ai_engine.main import get_metrics
+        
+        metrics = get_metrics()
+        print(f"Total cost: ${metrics['requests']['total_cost_usd']}")
+    """
+    return ai_assistant.get_performance_metrics()
+
+
+def get_costs() -> Dict[str, Any]:
+    """
+    Convenience function for cost analysis
+    
+    Example:
+        from src.ai_engine.main import get_costs
+        
+        costs = get_costs()
+        print(f"Daily cost: ${costs['total_cost_estimate']}")
+    """
+    return ai_assistant.get_cost_analysis()
+
+this is scripts/production_setup.py
+"""
+Production setup and validation script
+"""
+
+import os
+import sys
+import subprocess
+from pathlib import Path
+
+def validate_environment():
+    """Validate production environment"""
+    print("🔍 Validating production environment...")
+    
+    issues = []
+    
+    # Check Python version
+    if sys.version_info < (3, 9):
+        issues.append("Python 3.9+ required")
+    
+    # Check required environment variables
+    required_vars = [
+        "OPENAI_API_KEY",
+        "ENVIRONMENT"
+    ]
+    
+    for var in required_vars:
+        if not os.getenv(var):
+            issues.append(f"Missing environment variable: {var}")
+    
+    # Check OpenAI API key format
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    if api_key and not api_key.startswith("sk-"):
+        issues.append("Invalid OpenAI API key format")
+    
+    if issues:
+        print("❌ Environment validation failed:")
+        for issue in issues:
+            print(f"  - {issue}")
+        return False
+    
+    print("✅ Environment validation passed")
+    return True
+
+def install_dependencies():
+    """Install production dependencies"""
+    print("📦 Installing dependencies...")
+    
+    try:
+        subprocess.run([
+            sys.executable, "-m", "pip", "install", "-r", "requirements.txt"
+        ], check=True, capture_output=True)
+        
+        print("✅ Dependencies installed successfully")
+        return True
+        
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Failed to install dependencies: {e}")
+        return False
+
+def run_tests():
+    """Run test suite"""
+    print("🧪 Running test suite...")
+    
+    try:
+        result = subprocess.run([
+            sys.executable, "-m", "pytest", "tests/", "-v"
+        ], capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            print("✅ All tests passed")
+            return True
+        else:
+            print("❌ Some tests failed:")
+            print(result.stdout)
+            print(result.stderr)
+            return False
+            
+    except Exception as e:
+        print(f"❌ Failed to run tests: {e}")
+        return False
+
+def validate_ai_configuration():
+    """Validate AI configuration"""
+    print("🤖 Validating AI configuration...")
+    
+    try:
+        # Import after dependencies are installed
+        from src.ai_engine.main import ai_assistant
+        
+        validation_result = ai_assistant.validate_configuration()
+        
+        if validation_result["valid"]:
+            print("✅ AI configuration valid")
+            
+            if validation_result.get("warnings"):
+                print("⚠️  Configuration warnings:")
+                for warning in validation_result["warnings"]:
+                    print(f"  - {warning}")
+            
+            return True
+        else:
+            print("❌ AI configuration issues:")
+            for issue in validation_result.get("issues", []):
+                print(f"  - {issue}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Failed to validate AI configuration: {e}")
+        return False
+
+def main():
+    """Main setup function"""
+    print("🚀 Setting up Jira AI Assistant for production...")
+    
+    steps = [
+        ("Validate Environment", validate_environment),
+        ("Install Dependencies", install_dependencies),
+        ("Run Tests", run_tests),
+        ("Validate AI Configuration", validate_ai_configuration)
+    ]
+    
+    for step_name, step_func in steps:
+        print(f"\n--- {step_name} ---")
+        if not step_func():
+            print(f"\n❌ Setup failed at step: {step_name}")
+            sys.exit(1)
+    
+    print("\n🎉 Production setup completed successfully!")
+    print("\n📋 Next steps for backend team:")
+    print("1. Import: from src.ai_engine.main import process_message")
+    print("2. Set up monitoring endpoint using get_health() and get_metrics()")
+    print("3. Configure error alerting based on circuit breaker states")
+    print("4. Set up user approval workflows for generated content")
+
+if __name__ == "__main__":
+    main()
+    

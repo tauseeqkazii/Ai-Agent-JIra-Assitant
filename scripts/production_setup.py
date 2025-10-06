@@ -20,7 +20,7 @@ def validate_environment():
     # Check required environment variables
     required_vars = [
         "OPENAI_API_KEY",
-        "AI_ENGINE_ENVIRONMENT"
+        "ENVIRONMENT"
     ]
     
     for var in required_vars:

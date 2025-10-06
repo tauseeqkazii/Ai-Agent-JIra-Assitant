@@ -1,34 +1,56 @@
+"""
+Response Validator Module
+Validates AI-generated responses for quality and appropriateness
+"""
+
 import re
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Set
 import logging
+
+from ..core.config import config
 
 logger = logging.getLogger(__name__)
 
+
 class ResponseValidator:
-    """Validates AI-generated responses for quality and appropriateness"""
+    """
+    Validates AI-generated responses for quality, professionalism, and security
+    """
     
     def __init__(self):
         # Professional tone indicators
         self.professional_indicators = [
             'completed', 'implemented', 'resolved', 'pending', 'reviewing',
-            'investigating', 'deployment', 'testing', 'development'
+            'investigating', 'deployment', 'testing', 'development',
+            'addressing', 'coordinating', 'optimizing', 'analyzing'
         ]
         
         # Unprofessional indicators to flag
         self.unprofessional_indicators = [
             'gonna', 'wanna', 'kinda', 'sorta', 'dunno', 'yeah', 'nope',
-            'totally', 'awesome', 'cool', 'sucks', 'crap'
+            'totally', 'awesome', 'cool', 'sucks', 'crap', 'dude', 'bro'
         ]
         
-        # Sensitive information patterns to flag
-        self.sensitive_patterns = [
-            r'\b\d{3}-\d{2}-\d{4}\b',  # SSN
-            r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',  # Email
-            r'\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b',  # Credit card
-            r'\bpassword[:\s]+\S+',  # Password
-        ]
+        # Compile sensitive information patterns
+        self._compile_sensitive_patterns()
+        
+        logger.info("ResponseValidator initialized")
     
-    def validate_response(self, generated_content: str, response_type: str) -> Dict[str, Any]:
+    def _compile_sensitive_patterns(self):
+        """Compile regex patterns for sensitive information detection"""
+        self.sensitive_patterns = {
+            "ssn": re.compile(r'\b\d{3}-\d{2}-\d{4}\b'),
+            "credit_card": re.compile(r'\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b'),
+            "password": re.compile(r'\bpassword[:\s]+\S+', re.IGNORECASE),
+            # Email pattern - but we'll be smarter about it
+            "personal_email": re.compile(r'\b[A-Za-z0-9._%+-]+@(?!company\.com|organization\.org)[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
+        }
+    
+    def validate_response(
+        self, 
+        generated_content: str, 
+        response_type: str
+    ) -> Dict[str, Any]:
         """
         Validate AI-generated response for quality and appropriateness
         
@@ -73,7 +95,12 @@ class ResponseValidator:
                 completion_check = self._check_completion_markers(generated_content)
                 validation_result["has_completion_markers"] = completion_check["found"]
                 if completion_check["found"]:
-                    validation_result["flags"].append("Contains completion markers - verify task is actually complete")
+                    validation_result["flags"].append(
+                        f"Contains completion markers: {', '.join(completion_check['markers'])}"
+                    )
+                    validation_result["recommendations"].append(
+                        "Verify task is actually complete before marking as done"
+                    )
             
             # Calculate overall score
             overall_score = self._calculate_overall_score(validation_result)
@@ -81,16 +108,20 @@ class ResponseValidator:
             
             # Determine if approved for auto-send
             validation_result["approved_for_auto_send"] = (
-                overall_score >= 0.8 and 
+                overall_score >= config.auto_approval_threshold and 
                 not validation_result["has_sensitive_info"] and
                 len(validation_result["flags"]) == 0
             )
             
-            logger.info(f"Response validated - Score: {overall_score:.2f}, Auto-approved: {validation_result['approved_for_auto_send']}")
+            logger.info(
+                f"Response validated - Score: {overall_score:.2f}, "
+                f"Auto-approved: {validation_result['approved_for_auto_send']}"
+            )
+            
             return validation_result
             
         except Exception as e:
-            logger.error(f"Validation error: {str(e)}")
+            logger.error(f"Validation error: {str(e)}", exc_info=True)
             return {
                 "overall_score": 0.0,
                 "error": "validation_failed",
@@ -99,8 +130,23 @@ class ResponseValidator:
             }
     
     def _check_professional_tone(self, content: str) -> float:
-        """Check professional tone of the content"""
+        """
+        Check professional tone of the content
+        
+        Args:
+            content: Text to check
+            
+        Returns:
+            Professionalism score (0.0 to 1.0)
+        """
+        if not content:
+            return 0.0
+        
         content_lower = content.lower()
+        word_count = len(content.split())
+        
+        if word_count == 0:
+            return 0.0
         
         # Count professional indicators
         prof_count = sum(1 for word in self.professional_indicators if word in content_lower)
@@ -108,16 +154,11 @@ class ResponseValidator:
         # Count unprofessional indicators (penalty)
         unprof_count = sum(1 for word in self.unprofessional_indicators if word in content_lower)
         
-        # Basic score calculation
-        word_count = len(content.split())
-        if word_count == 0:
-            return 0.0
-        
-        # Professional ratio
+        # Calculate professional ratio (normalize by word count)
         prof_ratio = prof_count / max(word_count, 1)
         unprof_penalty = unprof_count * 0.2
         
-        # Base score starts at 0.7, increases with professional words, decreases with unprofessional
+        # Base score starts at 0.7
         base_score = 0.7
         prof_bonus = min(prof_ratio * 2, 0.3)  # Max 0.3 bonus
         
@@ -125,7 +166,16 @@ class ResponseValidator:
         return max(0.0, min(1.0, score))
     
     def _check_length(self, content: str, response_type: str) -> Dict[str, Any]:
-        """Check if content length is appropriate for response type"""
+        """
+        Check if content length is appropriate for response type
+        
+        Args:
+            content: Text to check
+            response_type: Type of response
+            
+        Returns:
+            Dictionary with appropriateness and feedback
+        """
         word_count = len(content.split())
         char_count = len(content)
         
@@ -134,13 +184,13 @@ class ResponseValidator:
             if word_count < 3:
                 return {
                     "appropriate": False,
-                    "issue": "Comment too short",
+                    "issue": "Comment too short (less than 3 words)",
                     "recommendation": "Add more detail about the task update"
                 }
             elif word_count > 100:
                 return {
                     "appropriate": False,
-                    "issue": "Comment too long",
+                    "issue": "Comment too long (over 100 words)",
                     "recommendation": "Make comment more concise for Jira"
                 }
                 
@@ -149,40 +199,60 @@ class ResponseValidator:
             if word_count < 10:
                 return {
                     "appropriate": False,
-                    "issue": "Email too short",
+                    "issue": "Email too short (less than 10 words)",
                     "recommendation": "Add more context and proper email structure"
                 }
             elif word_count > 300:
                 return {
                     "appropriate": False,
-                    "issue": "Email too long",
+                    "issue": "Email too long (over 300 words)",
                     "recommendation": "Make email more concise for better readability"
                 }
         
         return {"appropriate": True}
     
     def _check_sensitive_info(self, content: str) -> Dict[str, Any]:
-        """Check for potentially sensitive information"""
-        found_types = []
+        """
+        Check for potentially sensitive information
         
-        for pattern in self.sensitive_patterns:
-            if re.search(pattern, content, re.IGNORECASE):
-                if 'SSN' not in str(found_types) and r'\d{3}-\d{2}-\d{4}' in pattern:
-                    found_types.append("Potential SSN detected")
-                elif 'email' not in str(found_types).lower() and '@' in pattern:
-                    found_types.append("Email address detected")
-                elif 'credit card' not in str(found_types).lower() and r'\d{4}' in pattern:
-                    found_types.append("Potential credit card number detected")
-                elif 'password' not in str(found_types).lower() and 'password' in pattern:
-                    found_types.append("Password information detected")
+        Args:
+            content: Text to check
+            
+        Returns:
+            Dictionary with findings
+        """
+        found_types: Set[str] = set()
+        
+        # Check each pattern
+        for info_type, pattern in self.sensitive_patterns.items():
+            if pattern.search(content):
+                if info_type == "ssn":
+                    found_types.add("Potential SSN detected")
+                elif info_type == "credit_card":
+                    # Additional validation - check if it looks like a real credit card
+                    # (simple Luhn algorithm check could go here)
+                    found_types.add("Potential credit card number detected")
+                elif info_type == "password":
+                    found_types.add("Password information detected")
+                elif info_type == "personal_email":
+                    # Only flag non-business emails
+                    found_types.add("Personal email address detected")
         
         return {
             "found": len(found_types) > 0,
-            "types": found_types
+            "types": list(found_types)
         }
     
     def _check_completion_markers(self, content: str) -> Dict[str, Any]:
-        """Check for task completion markers in rephrased comments"""
+        """
+        Check for task completion markers in rephrased comments
+        
+        Args:
+            content: Text to check
+            
+        Returns:
+            Dictionary with found markers
+        """
         completion_words = ['completed', 'finished', 'done', 'resolved', 'closed']
         content_lower = content.lower()
         
@@ -194,14 +264,22 @@ class ResponseValidator:
         }
     
     def _calculate_overall_score(self, validation_result: Dict[str, Any]) -> float:
-        """Calculate overall validation score"""
+        """
+        Calculate overall validation score
+        
+        Args:
+            validation_result: Current validation results
+            
+        Returns:
+            Overall score (0.0 to 1.0)
+        """
         base_score = validation_result["professional_tone_score"]
         
         # Length penalty
         if not validation_result["length_appropriate"]:
             base_score -= 0.2
         
-        # Sensitive info penalty
+        # Sensitive info penalty (major)
         if validation_result["has_sensitive_info"]:
             base_score -= 0.5
         
@@ -210,3 +288,28 @@ class ResponseValidator:
         base_score -= flag_penalty
         
         return max(0.0, min(1.0, base_score))
+    
+    def quick_validate(self, content: str) -> bool:
+        """
+        Quick validation check (for performance)
+        
+        Args:
+            content: Text to validate
+            
+        Returns:
+            True if content passes basic checks
+        """
+        # Quick checks only
+        if not content or len(content.strip()) < 3:
+            return False
+        
+        # Check for obvious unprofessional words
+        content_lower = content.lower()
+        if any(word in content_lower for word in ['fuck', 'shit', 'damn', 'crap']):
+            return False
+        
+        # Check for obvious sensitive info patterns
+        if re.search(r'\b\d{3}-\d{2}-\d{4}\b', content):  # SSN
+            return False
+        
+        return True

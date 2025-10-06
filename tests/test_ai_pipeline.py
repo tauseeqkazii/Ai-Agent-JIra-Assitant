@@ -3,7 +3,7 @@ import unittest.mock as mock
 from src.ai_engine.core.pipeline import AIProcessingPipeline
 from src.ai_engine.classification.intent_classifier import RouteType
 from src.ai_engine.core.config import config
-
+from src.ai_engine.models.model_manager import ModelManager
 class TestAIPipeline:
     """Comprehensive tests for AI processing pipeline"""
     
@@ -112,21 +112,23 @@ class TestAIPipeline:
         # Should handle gracefully
         assert "success" in result
     
-    @mock.patch('src.ai_engine.utils.advanced_cache.SemanticCacheManager.get_similar')
-    def test_cache_hit(self, mock_cache, pipeline, mock_user_context):
-        """Test cache hit scenario"""
-        user_input = "I completed the task"
+    @mock.patch('src.ai_engine.generation.comment_generator.CommentGenerator.generate_professional_comment')
+    def test_cache_hit(self, mock_generator, pipeline, mock_user_context):
+        user_input = "I fixed the API bug"  # LLM route, not backend
         
-        # Mock cache hit
-        mock_cache.return_value = {
-            "professional_comment": "Task completed successfully.",
-            "quality_score": 0.9
+        # First call
+        mock_generator.return_value = {
+            "success": True,
+            "professional_comment": "Resolved API bug.",
+            "from_cache": False
         }
+        result1 = pipeline.process_user_request(user_input, mock_user_context)
         
-        result = pipeline.process_user_request(user_input, mock_user_context)
+        # Second call - should use cache
+        result2 = pipeline.process_user_request(user_input, mock_user_context)
         
-        # Should use backend shortcut for simple completion
-        assert result["route_type"] == "backend_completion"
+        # Generator should only be called once due to caching
+        assert mock_generator.call_count == 1
 
 if __name__ == "__main__":
     pytest.main([__file__])

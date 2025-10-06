@@ -6,6 +6,10 @@ import numpy as np
 from numpy.typing import NDArray
 
 try:
+    from numpy.typing import NDArray
+except ImportError:
+    NDArray = Any 
+try:
     import torch  # type: ignore
 except ImportError:
     torch = None  # type: ignore
@@ -15,7 +19,7 @@ try:
 except ImportError:
     SentenceTransformer = None  # type: ignore
 import logging
-from ai_engine.core.config import config, settings
+from ..core.config import config
 
 logger = logging.getLogger(__name__)
 

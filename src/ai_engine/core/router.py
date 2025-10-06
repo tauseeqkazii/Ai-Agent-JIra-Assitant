@@ -52,6 +52,28 @@ class TaskRouter:
             Dict with routing decision and metadata
         """
         try:
+            
+            scope_check = self.intent_classifier.is_within_scope(user_input)
+            
+            if not scope_check["in_scope"]:
+                logger.info(f"Input out of scope: {scope_check['reason']}")
+                return {
+                    "route_type": "out_of_scope",
+                    "confidence": 0.95,
+                    "requires_llm": False,
+                    "user_input": user_input,
+                    "user_context": user_context,
+                    "out_of_scope_reason": scope_check["reason"],
+                    "suggested_response": scope_check.get(
+                        "suggestion",
+                        "This request is outside my scope. I can only rephrase Jira task updates or generate professional emails."
+                    ),
+                    "processing_metadata": {
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "user_id": user_context.get("user_id"),
+                    },
+                    "backend_action": "show_scope_message"
+                }
             # Validate inputs
             if not user_input or not user_input.strip():
                 logger.warning("Empty input received in router")

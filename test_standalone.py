@@ -18,7 +18,7 @@ def test_basic_functionality():
     
     try:
         # Import AI engine
-        from ai_engine.main import ai_assistant, process_message
+        from src.ai_engine.main import ai_assistant, process_message
         
         print("✅ AI Engine imported successfully")
         

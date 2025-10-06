@@ -6,6 +6,7 @@ from .error_handler import error_handler
 from .advanced_cache import SemanticCacheManager
 from ..core.config import config
 
+
 class ProductionMonitor:
     """Production monitoring and health check system"""
     
@@ -29,7 +30,7 @@ class ProductionMonitor:
                 "uptime_hours": self._get_uptime_hours(),
                 "components": {
                     "openai_api": {"healthy": openai_healthy},
-                    "cache_system": {"healthy": cache_healthy}, 
+                    "cache_system": {"healthy": cache_healthy},
                     "error_rate": {"healthy": error_rate_ok}
                 },
                 "environment": config.environment,
@@ -86,48 +87,51 @@ class ProductionMonitor:
         """Get cost analysis and optimization suggestions"""
         try:
             api_calls = self.metrics.metrics.get("api_calls", [])
-            
+
             if not api_calls:
                 return {"total_cost_estimate": 0.0, "suggestions": []}
-            
-            # Calculate token costs (approximate)
-            total_tokens = sum(call.get("tokens_used", 0) for call in api_calls)
-            
-            # Rough cost estimates (as of 2024)
-            gpt4_cost_per_1k = 0.03  # $0.03 per 1K tokens
-            gpt35_cost_per_1k = 0.002  # $0.002 per 1K tokens
-            
+
+            # Get pricing from config
+            from ..core.config import config
+            cost_config = config.cost_config
+
             total_cost = 0.0
             model_usage = {}
-            
+
             for call in api_calls:
-                tokens = call.get("tokens_used", 0)
                 model = call.get("model", "")
-                
+                prompt_tokens = call.get("prompt_tokens", 0)
+                completion_tokens = call.get("completion_tokens", 0)
+
                 if model not in model_usage:
-                    model_usage[model] = {"tokens": 0, "calls": 0}
-                
-                model_usage[model]["tokens"] += tokens
+                    model_usage[model] = {"tokens": 0, "calls": 0, "cost": 0.0}
+
+                model_usage[model]["tokens"] += prompt_tokens + completion_tokens
                 model_usage[model]["calls"] += 1
-                
-                if "gpt-4" in model.lower():
-                    total_cost += (tokens / 1000) * gpt4_cost_per_1k
-                elif "gpt-3.5" in model.lower():
-                    total_cost += (tokens / 1000) * gpt35_cost_per_1k
-            
-            # Generate optimization suggestions
+
+                # Calculate cost properly
+                if model in cost_config:
+                    pricing = cost_config[model]
+                    cost = (
+                        (prompt_tokens / 1000 * pricing.get("input", 0)) +
+                        (completion_tokens / 1000 * pricing.get("output", 0))
+                    )
+                    total_cost += cost
+                    model_usage[model]["cost"] += cost
+
+            # ✅ move this inside the try block
             suggestions = self._generate_cost_optimization_suggestions(model_usage, api_calls)
-            
+
             return {
                 "total_cost_estimate": round(total_cost, 4),
-                "total_tokens": total_tokens,
+                "total_tokens": sum(m["tokens"] for m in model_usage.values()),
                 "model_usage": model_usage,
                 "cost_per_request": round(total_cost / max(len(api_calls), 1), 4),
                 "optimization_suggestions": suggestions,
                 "analysis_period": "current_session",
                 "timestamp": datetime.now().isoformat()
             }
-            
+
         except Exception as e:
             return {
                 "error": f"Cost analysis failed: {str(e)}",
@@ -288,6 +292,7 @@ class ProductionMonitor:
             suggestions.append(f"Could not generate optimization suggestions: {str(e)}")
         
         return suggestions
+
 
 # Global monitor instance
 production_monitor = ProductionMonitor()
