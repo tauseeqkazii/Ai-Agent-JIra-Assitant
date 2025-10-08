@@ -1,14 +1,28 @@
-﻿openai
-transformers
-torch
-scikit-learn
+﻿# Core dependencies
+openai
+pydantic
+pydantic-settings
+python-dotenv
+
+# API and web
+fastapi
+uvicorn
+httpx
+
+# Data processing
 numpy
 pandas
-sentence-transformers
-redis
-python-dotenv
-pydantic
+
+# Optional: Semantic caching
+sentence-transformers  # Optional
+torch  # Optional, for embeddings
+
+# Testing
 pytest
-black
-flake8
-jupyter
+pytest-asyncio
+
+# Monitoring
+tiktoken  # For token counting
+
+# Logging
+python-json-logger

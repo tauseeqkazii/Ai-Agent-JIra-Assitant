@@ -363,6 +363,20 @@ class AIProcessingPipeline:
             Backend response dict
         """
         route_type = routing_result["route_type"]
+        if route_type == "out_of_scope":
+            return {
+                "success": True,
+                "processing_type": "out_of_scope",
+                "route_type": route_type,
+                "original_input": routing_result["user_input"],
+                "requires_llm": False,
+                "message": routing_result.get(
+                    "suggested_response",
+                    "This request is outside my scope. I can only rephrase Jira task updates or generate professional emails."
+                ),
+                "backend_action": "show_info_message",
+                "confidence": routing_result["confidence"]
+            }
         
         if route_type == "backend_completion":
             return {

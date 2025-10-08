@@ -1,13 +1,13 @@
 """
 Model Manager Module
-Manages OpenAI API calls and model interactions
+Manages OpenAI/Azure OpenAI API calls with unified interface
 """
 
 import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-from openai import OpenAI
+from openai import OpenAI, AzureOpenAI
 import openai
 
 from ..core.config import config
@@ -18,24 +18,40 @@ logger = logging.getLogger(__name__)
 
 class ModelManager:
     """
-    Manages OpenAI API calls with error handling and fallbacks
+    Manages OpenAI/Azure OpenAI API calls with error handling and fallbacks
     """
     
     def __init__(self, metrics: Optional[MetricsCollector] = None):
         """
-        Initialize model manager
+        Initialize model manager with appropriate client (OpenAI or Azure)
         
         Args:
-            metrics: Optional metrics collector instance (for shared metrics)
+            metrics: Optional metrics collector instance
         """
-        self.client = OpenAI(api_key=config.openai_api_key)
         self.metrics = metrics or MetricsCollector()
+        
+        # Initialize the appropriate client based on provider
+        if config.is_azure:
+            logger.info("Initializing Azure OpenAI client")
+            self.client = AzureOpenAI(
+                api_key=config.openai_api_key,
+                api_version=config.azure_api_version,
+                azure_endpoint=config.azure_api_base
+            )
+            logger.info(f"Azure OpenAI configured with endpoint: {config.azure_api_base}")
+            logger.info(f"Available models: {', '.join(config.model_config_map.values())}")
+        else:
+            logger.info("Initializing OpenAI client")
+            self.client = OpenAI(api_key=config.openai_api_key)
         
         # Model configurations from config
         self.models = config.model_config_map
         self.token_limits = config.token_limits
         
-        logger.info(f"ModelManager initialized with primary model: {self.models['primary']}")
+        logger.info(
+            f"ModelManager initialized with provider: {config.api_provider}, "
+            f"primary model: {self.models['primary']}"
+        )
     
     def generate_completion(
         self, 
@@ -46,7 +62,7 @@ class ModelManager:
         max_tokens: Optional[int] = None
     ) -> Dict[str, Any]:
         """
-        Generate completion using OpenAI API
+        Generate completion using OpenAI/Azure OpenAI API
         
         Args:
             system_prompt: System instructions
@@ -75,18 +91,30 @@ class ModelManager:
             # Record API call start time
             start_time = datetime.utcnow()
             
-            # Make API call with timeout
-            response = self.client.chat.completions.create(
-                model=model_name,
-                messages=[
+            # Prepare API call parameters
+            api_params = {
+                "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_message}
                 ],
-                temperature=temperature,
-                max_tokens=max_tokens,
-                top_p=0.9,
-                timeout=config.openai_timeout_seconds
-            )
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "top_p": 0.9,
+                "timeout": config.openai_timeout_seconds
+            }
+            
+            # Add model parameter differently based on provider
+            if config.is_azure:
+                # For Azure, use deployment name (not model name)
+                api_params["model"] = model_name
+                logger.debug(f"Using Azure deployment: {model_name}")
+            else:
+                # For OpenAI, use model name
+                api_params["model"] = model_name
+                logger.debug(f"Using OpenAI model: {model_name}")
+            
+            # Make API call
+            response = self.client.chat.completions.create(**api_params)
             
             # Calculate processing time
             end_time = datetime.utcnow()
@@ -97,6 +125,7 @@ class ModelManager:
                 "success": True,
                 "content": response.choices[0].message.content,
                 "model_used": model_name,
+                "api_provider": config.api_provider,
                 "usage": {
                     "prompt_tokens": response.usage.prompt_tokens,
                     "completion_tokens": response.usage.completion_tokens,
@@ -122,12 +151,10 @@ class ModelManager:
                 )
             except Exception as e:
                 logger.warning(f"Failed to record API metrics: {e}")
-                # Don't fail the request if metrics fail
             
             logger.info(
-                f"OpenAI call successful - {model_name} - "
-                f"{response.usage.total_tokens} tokens - "
-                f"{processing_time:.2f}s"
+                f"API call successful - {config.api_provider}/{model_name} - "
+                f"{response.usage.total_tokens} tokens - {processing_time:.2f}s"
             )
             
             return result
@@ -137,7 +164,7 @@ class ModelManager:
             return self._handle_rate_limit_error(system_prompt, user_message, model_type)
             
         except openai.APIError as e:
-            logger.error(f"OpenAI API error: {str(e)}")
+            logger.error(f"API error: {str(e)}")
             
             # Record failed API call
             try:
@@ -157,7 +184,7 @@ class ModelManager:
             }
         
         except openai.APITimeoutError as e:
-            logger.error(f"OpenAI API timeout: {str(e)}")
+            logger.error(f"API timeout: {str(e)}")
             
             try:
                 self.metrics.record_api_call(
@@ -174,6 +201,15 @@ class ModelManager:
                 "error_message": f"Request timed out after {config.openai_timeout_seconds}s",
                 "fallback_available": True
             }
+        
+        except openai.AuthenticationError as e:
+            logger.error(f"Authentication error: {str(e)}")
+            return {
+                "success": False,
+                "error": "authentication_error",
+                "error_message": "Invalid API key or authentication failed",
+                "fallback_available": False
+            }
             
         except (ValueError, TypeError, KeyError) as e:
             logger.error(f"Invalid input or configuration: {str(e)}")
@@ -185,7 +221,7 @@ class ModelManager:
             }
             
         except Exception as e:
-            logger.error(f"Unexpected error in OpenAI call: {str(e)}", exc_info=True)
+            logger.error(f"Unexpected error in API call: {str(e)}", exc_info=True)
             return {
                 "success": False,
                 "error": "unexpected_error",
