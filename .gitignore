@@ -66,3 +66,5 @@ coverage.xml
 # Local settings
 local_settings.py
 .env
+test.txt
+Agent.zip
