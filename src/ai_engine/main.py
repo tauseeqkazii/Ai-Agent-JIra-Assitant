@@ -11,6 +11,11 @@ from .core.pipeline import AIProcessingPipeline
 from .core.config import config
 from .utils.monitoring import production_monitor
 from .utils.error_handler import error_handler
+import os
+from dotenv import load_dotenv
+
+# Load .env file so all os.getenv calls see the values
+load_dotenv()  # By default, looks for .env in the current working directory
 
 # Configure logging based on environment
 logging.basicConfig(

@@ -2,6 +2,7 @@
 System Prompts Module
 Contains all AI prompt templates with optimized token usage
 """
+import tiktoken
 
 
 class SystemPrompts:
@@ -91,7 +92,8 @@ Classify:"""
     def build_comment_prompt_with_context(
         user_role: str = None,
         project_type: str = None,
-        task_type: str = None
+        task_type: str = None,
+        task_title: str = None,
     ) -> str:
         """
         Build context-aware comment rephrasing prompt
@@ -100,6 +102,7 @@ Classify:"""
             user_role: User's role (e.g., "Senior Engineer")
             project_type: Type of project (e.g., "Mobile App")
             task_type: Type of task (e.g., "Bug Fix")
+            task_title: Title of the task (e.g., "Fix login bug")
             
         Returns:
             Prompt with added context
@@ -113,6 +116,8 @@ Classify:"""
             context_parts.append(f"Project: {project_type}")
         if task_type:
             context_parts.append(f"Task type: {task_type}")
+        if task_title:
+            context_parts.append(f"Task title: \"{task_title}\"")
         
         if context_parts:
             context = "\nContext: " + ", ".join(context_parts)
@@ -189,7 +194,6 @@ Return only a number between 0.0 and 1.0."""
     @classmethod
     def get_prompt_stats(cls) -> dict:
         """Get statistics about prompt token usage"""
-        import tiktoken
         
         try:
             # Use tiktoken to count tokens (GPT-4 encoding)

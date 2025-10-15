@@ -34,8 +34,8 @@ class AIEngineConfig(BaseSettings):
     
     # Azure-specific fields
     azure_api_base: Optional[str] = Field(
-        default_factory=lambda: os.getenv("OPENAI_API_BASE_URL", None),
-        description="Azure OpenAI endpoint (e.g., https://your-resource.cognitiveservices.azure.com/openai/v1/)"
+    default_factory=lambda: os.getenv("OPENAI_API_BASE_URL", "https://mindtraqk-model-ai.cognitiveservices.azure.com/"),
+    description="Azure OpenAI endpoint"
     )
     azure_api_version: str = Field(
         default="2024-02-15-preview",

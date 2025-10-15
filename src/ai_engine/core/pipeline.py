@@ -4,6 +4,7 @@ Orchestrates the complete AI workflow from routing to response generation
 """
 
 import logging
+import textwrap
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -85,19 +86,37 @@ class AIProcessingPipeline:
             if not user_context:
                 user_context = {}
                 logger.warning("No user context provided, using empty dict")
-            
-            # Step 1: Route the request
-            routing_result = self.router.route_request(user_input, user_context)
-            
-            logger.info(f"Request routed to: {routing_result['route_type']}")
-            
-            # Step 2: Process based on route type
-            if not routing_result["requires_llm"]:
-                # Backend shortcut - no AI processing needed
-                return self._create_backend_response(routing_result)
-            
-            # Step 3: LLM Processing required
-            processing_result = self._handle_llm_processing(routing_result)
+
+            routing_result: Dict[str, Any]
+            processing_result: Dict[str, Any]
+
+            agent_operation = user_context.get("agent_operation")
+            if agent_operation:
+                routing_result = {
+                    "route_type": f"agent_{agent_operation}",
+                    "confidence": 1.0,
+                    "requires_llm": True,
+                    "user_input": user_input,
+                    "user_context": user_context,
+                    "classification_details": {},
+                }
+                processing_result = self._process_agent_operation(
+                    agent_operation, user_input, user_context
+                )
+            else:
+                # Step 1: Route the request
+                routing_result = self.router.route_request(
+                    user_input, user_context
+                )
+                logger.info(f"Request routed to: {routing_result['route_type']}")
+
+                # Step 2: Process based on route type
+                if not routing_result["requires_llm"]:
+                    # Backend shortcut - no AI processing needed
+                    return self._create_backend_response(routing_result)
+
+                # Step 3: LLM Processing required
+                processing_result = self._handle_llm_processing(routing_result)
             
             # Step 4: Validate response quality (if content was generated)
             if processing_result.get("success") and "generated_content" in processing_result:
@@ -186,6 +205,190 @@ class AIProcessingPipeline:
                 "error_message": str(e),
                 "route_type": route_type,
                 "backend_action": "show_error_message"
+            }
+    
+    def _process_agent_operation(
+        self,
+        operation: str,
+        user_input: str,
+        user_context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Handle specialized agent operations used by the KT assistant proxy
+        """
+        try:
+            if operation == "draft_summary":
+                task_title = user_context.get("task_title")
+                comment_context = {
+                    "user_role": user_context.get("user_role"),
+                    "project_type": user_context.get("project_type"),
+                    "task_info": {
+                        "type": user_context.get("task_type"),
+                        "title": task_title,
+                    },
+                }
+
+                generation = self.comment_generator.generate_professional_comment(
+                    user_input, comment_context
+                )
+
+                if not generation.get("success"):
+                    return {
+                        "success": False,
+                        "error": generation.get("error", "generation_failed"),
+                        "error_message": generation.get(
+                            "error_message", "Failed to generate summary"
+                        ),
+                        "route_type": "agent_draft_summary",
+                        "backend_action": "agent_draft_summary",
+                    }
+
+                return {
+                    "success": True,
+                    "processing_type": "agent_draft_summary",
+                    "route_type": "agent_draft_summary",
+                    "original_input": user_input,
+                    "generated_content": generation["professional_comment"],
+                    "requires_user_approval": generation.get(
+                        "requires_approval", True
+                    ),
+                    "quality_score": generation.get("quality_score"),
+                    "processing_metadata": {
+                        **generation.get("processing_metadata", {}),
+                        "agent_operation": operation,
+                        "task_title": task_title,
+                    },
+                    "backend_action": "agent_draft_summary",
+                }
+
+            if operation == "apply_edits":
+                current_summary = user_context.get("current_summary")
+                if not current_summary:
+                    raise ValueError(
+                        "current_summary is required for apply_edits operation"
+                    )
+
+                system_prompt = textwrap.dedent(
+                    """
+                    You are an AI assistant for Jira task updates.
+                    Update the provided draft summary using the user's edit instructions.
+
+                    Requirements:
+                    - Keep the tone professional and concise (1-3 sentences).
+                    - Maintain existing factual information unless edits change it.
+                    - Only mark the task as complete if explicitly requested.
+                    - Return only the revised summary with no additional commentary.
+                    """
+                ).strip()
+
+                user_message = textwrap.dedent(
+                    f"""
+                    Current summary:
+                    {current_summary}
+
+                    Edit instructions:
+                    {user_input}
+                    """
+                ).strip()
+
+                llm_response = (
+                    self.model_manager.generate_completion_with_cost_check(
+                        system_prompt=system_prompt,
+                        user_message=user_message,
+                        model_type="primary",
+                        temperature=0.3,
+                        max_tokens=180,
+                    )
+                )
+
+                if not llm_response.get("success"):
+                    return {
+                        "success": False,
+                        "error": llm_response.get("error", "generation_failed"),
+                        "error_message": llm_response.get(
+                            "error_message", "Failed to apply edits"
+                        ),
+                        "route_type": "agent_apply_edits",
+                        "backend_action": "agent_apply_edits",
+                    }
+
+                updated_summary = (llm_response.get("content") or "").strip()
+
+                return {
+                    "success": True,
+                    "processing_type": "agent_apply_edits",
+                    "route_type": "agent_apply_edits",
+                    "original_input": user_input,
+                    "generated_content": updated_summary,
+                    "requires_user_approval": False,
+                    "processing_metadata": {
+                        **llm_response.get("metadata", {}),
+                        "agent_operation": operation,
+                    },
+                    "backend_action": "agent_apply_edits",
+                }
+
+            if operation == "analyze_update":
+                system_prompt = textwrap.dedent(
+                    """
+                    You are an AI classifier for Jira task updates.
+                    Determine whether the summary is only a status change, only a comment, or both.
+
+                    Respond with exactly one of:
+                    - status_only
+                    - comment_only
+                    - comment_and_status
+                    """
+                ).strip()
+
+                llm_response = (
+                    self.model_manager.generate_completion_with_cost_check(
+                        system_prompt=system_prompt,
+                        user_message=user_input,
+                        model_type="classification",
+                        temperature=0,
+                        max_tokens=20,
+                    )
+                )
+
+                if not llm_response.get("success"):
+                    return {
+                        "success": False,
+                        "error": llm_response.get("error", "classification_failed"),
+                        "error_message": llm_response.get(
+                            "error_message", "Failed to classify update type"
+                        ),
+                        "route_type": "agent_analyze_update",
+                        "backend_action": "agent_analyze_update",
+                    }
+
+                classification = (llm_response.get("content") or "").strip().lower()
+
+                return {
+                    "success": True,
+                    "processing_type": "agent_analyze_update",
+                    "route_type": "agent_analyze_update",
+                    "original_input": user_input,
+                    "generated_content": classification,
+                    "requires_user_approval": False,
+                    "processing_metadata": {
+                        **llm_response.get("metadata", {}),
+                        "agent_operation": operation,
+                    },
+                    "backend_action": "agent_analyze_update",
+                }
+
+            raise ValueError(f"Unsupported agent operation: {operation}")
+        except Exception as error:
+            logger.error(
+                f"Agent operation '{operation}' failed: {error}", exc_info=True
+            )
+            return {
+                "success": False,
+                "error": "agent_operation_failed",
+                "error_message": str(error),
+                "route_type": f"agent_{operation}",
+                "backend_action": "show_error_message",
             }
     
     def _process_comment_generation(

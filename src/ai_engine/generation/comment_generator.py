@@ -161,7 +161,8 @@ class CommentGenerator:
         return SystemPrompts.build_comment_prompt_with_context(
             user_role=context.get("user_role"),
             project_type=context.get("project_type"),
-            task_type=context.get("task_info", {}).get("type")
+            task_type=context.get("task_info", {}).get("type"),
+            task_title=context.get("task_info", {}).get("title"),
         )
     
     def _generate_cache_key(self, user_update: str) -> str:
