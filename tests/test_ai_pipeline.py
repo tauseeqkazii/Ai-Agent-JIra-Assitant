@@ -4,6 +4,7 @@ from src.ai_engine.core.pipeline import AIProcessingPipeline
 from src.ai_engine.classification.intent_classifier import RouteType
 from src.ai_engine.core.config import config
 from src.ai_engine.models.model_manager import ModelManager
+
 class TestAIPipeline:
     """Comprehensive tests for AI processing pipeline"""
     
@@ -66,6 +67,8 @@ class TestAIPipeline:
         assert result["backend_action"] == "show_comment_for_approval"
     
     @mock.patch('src.ai_engine.models.model_manager.ModelManager.generate_completion')
+    @mock.patch.object(ModelManager, 'generate_completion')
+    
     def test_email_generation_success(self, mock_llm, pipeline, mock_user_context):
         """Test successful email generation"""
         user_input = "write an email for sick leave tomorrow"

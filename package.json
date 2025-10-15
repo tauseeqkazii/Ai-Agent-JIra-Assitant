@@ -1,0 +1,19 @@
+{
+  "dependencies": {
+    "@types/applicationinsights": "^0.20.0",
+    "@types/express": "^5.0.3",
+    "@types/ioredis": "^4.28.10",
+    "@types/winston": "^2.4.4",
+    "applicationinsights": "^3.12.0",
+    "compression": "^1.8.1",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "helmet": "^8.1.0",
+    "ioredis": "^5.8.1",
+    "openai": "^6.3.0",
+    "winston": "^3.18.3",
+    "zod": "^4.1.12"
+  }
+}

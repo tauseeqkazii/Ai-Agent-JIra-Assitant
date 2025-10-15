@@ -26,3 +26,25 @@ tiktoken  # For token counting
 
 # Logging
 python-json-logger
+# FastAPI and server
+fastapi
+uvicorn[standard]
+
+# OpenAI (supports Azure)
+openai
+
+# Core dependencies
+pydantic
+pydantic-settings
+python-dotenv
+
+# Data processing
+numpy
+pandas
+
+# Testing
+pytest
+pytest-asyncio
+
+# Monitoring
+tiktoken
