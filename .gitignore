@@ -68,3 +68,15 @@ local_settings.py
 .env
 test.txt
 Agent.zip
+backup.zip
+mindtraqk-frontend-main/
+mindtraqk-backend-main/
+node_modules/
+backend/
+node_modules/
+mindtraqk-backend-main/
+mindtraqk-frontend-main/
+venv/
+*.zip
+*.txt
+*.log
